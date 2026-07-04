@@ -1,6 +1,8 @@
 // Lexical Diagnostic Laboratory (Layer A)
 // Scans text for common orthographic deviations in English and Hindi.
 
+import { escapeHtml } from './utils.js';
+
 const ENGLISH_RULES = [
   {
     patterns: [/\bacomodation\b/i, /\bacommodation\b/i, /\baccomodation\b/i, /\bacomodated\b/i, /\baccomodated\b/i],
@@ -146,31 +148,30 @@ export function scanText(text) {
   let repairOutput = "";
 
   if (englishRepairs.length > 0) {
-    repairOutput += "\n\n### **[LEXICAL REPAIR: ENGLISH]**\n";
+    repairOutput += "\n\n<b>[LEXICAL REPAIR: ENGLISH]</b>\n";
     for (const rep of englishRepairs) {
-      repairOutput += `⚠️ **Detected Deviation:** Correct spelling is **${rep.word}**\n`;
-      repairOutput += `• **Syllable Chunking:** \`${rep.syllables}\`\n`;
-      repairOutput += `• **Linguistic Rule:** ${rep.rule}\n---\n`;
+      repairOutput += `⚠️ <b>Detected Deviation:</b> Correct spelling is <b>${escapeHtml(rep.word)}</b>\n`;
+      repairOutput += `• <b>Syllable Chunking:</b> <code>${escapeHtml(rep.syllables)}</code>\n`;
+      repairOutput += `• <b>Linguistic Rule:</b> ${escapeHtml(rep.rule)}\n\n`;
     }
   }
 
   if (hindiRepairs.length > 0) {
-    repairOutput += "\n\n### **[वर्तनी सुधार: HINDI]**\n";
+    repairOutput += "\n\n<b>[वर्तनी सुधार: HINDI]</b>\n";
     for (const rep of hindiRepairs) {
       if (rep.isSemantic) {
-        repairOutput += `ℹ️ **शब्द अर्थ भेद चेतावनी:** **${rep.word}**\n`;
-        repairOutput += `• **उच्चारण भेद:** ${rep.shortVsLong}\n`;
-        repairOutput += `• **विवरण:** ${rep.explanation}\n`;
+        repairOutput += `ℹ️ <b>शब्द अर्थ भेद चेतावनी:</b> <b>${escapeHtml(rep.word)}</b>\n`;
+        repairOutput += `• <b>उच्चारण भेद:</b> ${escapeHtml(rep.shortVsLong)}\n`;
+        repairOutput += `• <b>विवरण:</b> ${escapeHtml(rep.explanation)}\n\n`;
       } else {
-        repairOutput += `⚠️ **अशुद्ध वर्तनी संसूचन:** शुद्ध रूप **${rep.word}** है।\n`;
-        repairOutput += `• **मात्रा भेद विवरण:** ${rep.explanation}\n`;
-        repairOutput += `• **ध्वनि नियम:** ${rep.shortVsLong}\n`;
-        repairOutput += `📝 **अभ्यास के लिए ३ बार लिखें:**\n`;
-        repairOutput += `1. \`${rep.word}\`\n`;
-        repairOutput += `2. \`${rep.word}\`\n`;
-        repairOutput += `3. \`${rep.word}\`\n`;
+        repairOutput += `⚠️ <b>अशुद्ध वर्तनी संसूचन:</b> शुद्ध रूप <b>${escapeHtml(rep.word)}</b> है।\n`;
+        repairOutput += `• <b>मात्रा भेद विवरण:</b> ${escapeHtml(rep.explanation)}\n`;
+        repairOutput += `• <b>ध्वनि नियम:</b> ${escapeHtml(rep.shortVsLong)}\n`;
+        repairOutput += `📝 <b>अभ्यास के लिए ३ बार लिखें:</b>\n`;
+        repairOutput += `1. <code>${escapeHtml(rep.word)}</code>\n`;
+        repairOutput += `2. <code>${escapeHtml(rep.word)}</code>\n`;
+        repairOutput += `3. <code>${escapeHtml(rep.word)}</code>\n\n`;
       }
-      repairOutput += "---\n";
     }
   }
 

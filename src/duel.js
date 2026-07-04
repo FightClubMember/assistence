@@ -3,6 +3,7 @@
 
 import { QUESTION_BANK } from './questions.js';
 import { addXp } from './session.js';
+import { escapeHtml } from './utils.js';
 
 // Global in-memory duel sessions
 const activeDuels = new Map();
@@ -40,17 +41,17 @@ export function renderQuestion(duelState) {
     lang: "🔤 Language Mastery Matrix"
   }[duelState.field];
 
-  return `### **⚔️ STUDY DUEL: COMBAT FIELD**
----
-**FIELD:** *${fieldName}*
-**QUESTION:** \`${duelState.currentIndex + 1} / 5\`
+  return `<b>⚔️ STUDY DUEL: COMBAT FIELD</b>
+--------------------------------------------
+<b>FIELD:</b> <i>${escapeHtml(fieldName)}</i>
+<b>QUESTION:</b> <code>${duelState.currentIndex + 1} / 5</code>
 
-❓ **Question:**
-\`\`\`text
-${q.question}
-\`\`\`
+❓ <b>Question:</b>
+<pre>
+${escapeHtml(q.question)}
+</pre>
 
-*Select one of the options below. A high-stakes countdown is simulated. Accuracy is paramount.*`;
+<i>Select one of the options below. A high-stakes countdown is simulated. Accuracy is paramount.</i>`;
 }
 
 export function submitAnswer(userId, optionIndex) {
@@ -94,43 +95,47 @@ export function processScorecard(userId, username = "Cadet") {
     addXp(userId, xpEarned);
   }
 
-  // Generate Scorecard markdown table
+  // Generate Scorecard pre-formatted table
   let tableRows = duelState.answers.map(ans => {
     const statusSymbol = ans.isCorrect ? "✅ Correct" : "❌ Incorrect";
-    return `| Q${ans.questionNum} | ${statusSymbol} |`;
+    return `Q${ans.questionNum}       | ${statusSymbol}`;
   }).join("\n");
 
   let errorBreakdown = "";
   const errors = duelState.answers.filter(a => !a.isCorrect);
   if (errors.length > 0) {
-    errorBreakdown = `\n---\n### **🔍 CRITICAL ERROR ANALYSIS**\n`;
+    errorBreakdown = `
+--------------------------------------------
+<b>🔍 CRITICAL ERROR ANALYSIS</b>\n`;
     errors.forEach(err => {
-      errorBreakdown += `⚠️ **Q${err.questionNum} Failed:**\n`;
-      errorBreakdown += `• *Your Answer:* ${err.userSelected}\n`;
-      errorBreakdown += `• *Correct Answer:* **${err.correctAnswer}**\n`;
-      errorBreakdown += `• *Resolution Logic:* _${err.explanation}_\n\n`;
+      errorBreakdown += `⚠️ <b>Q${err.questionNum} Failed:</b>\n`;
+      errorBreakdown += `• <i>Your Answer:</i> ${escapeHtml(err.userSelected)}\n`;
+      errorBreakdown += `• <i>Correct Answer:</i> <b>${escapeHtml(err.correctAnswer)}</b>\n`;
+      errorBreakdown += `• <i>Resolution Logic:</i> <i>${escapeHtml(err.explanation)}</i>\n\n`;
     });
   }
 
   const resultHeader = win 
-    ? `🏆 **VICTORY SECURED (+${xpEarned + victoryBonus} XP)**` 
-    : `💀 **DEFEAT - INTELLECTUAL LIMIT REACHED (+${xpEarned} XP)**`;
+    ? `🏆 <b>VICTORY SECURED (+${xpEarned + victoryBonus} XP)</b>` 
+    : `💀 <b>DEFEAT - INTELLECTUAL LIMIT REACHED (+${xpEarned} XP)</b>`;
 
-  const report = `### **⚔️ STUDY DUEL: SCORECARD**
----
-👤 **CONTENDER:** @${username}
-📊 **FINAL SCORE:** \`${correctCount} / ${totalQuestions}\`
-⚡ **STATUS:** ${resultHeader}
+  const report = `<b>⚔️ STUDY DUEL: SCORECARD</b>
+--------------------------------------------
+👤 <b>CONTENDER:</b> @${escapeHtml(username)}
+📊 <b>FINAL SCORE:</b> <code>${correctCount} / ${totalQuestions}</code>
+⚡ <b>STATUS:</b> ${resultHeader}
 
-| Question | Evaluation State |
-| :--- | :--- |
+<pre>
+Question | Evaluation State
+---------------------------
 ${tableRows}
+</pre>
 
----
-### **XP DISTRIBUTION MATRIX**
-- Correct Blocks (Math/GS/Lang): \`+${correctCount * 10} XP\`
-- Strategic Victory Bonus: \`+${victoryBonus} XP\`
-- Net Cumulative Gain: \`+${xpEarned + victoryBonus} XP\`
+--------------------------------------------
+<b>XP DISTRIBUTION MATRIX:</b>
+• Correct Blocks (Math/GS/Lang): <code>+${correctCount * 10} XP</code>
+• Strategic Victory Bonus: <code>+${victoryBonus} XP</code>
+• Net Cumulative Gain: <code>+${xpEarned + victoryBonus} XP</code>
 ${errorBreakdown}
 `;
 

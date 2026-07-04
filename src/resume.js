@@ -6,77 +6,74 @@ const activeResumes = new Map();
 export const RESUME_PHASES = {
   1: {
     title: "Phase 1: Personal Coordinates & Headline",
-    prompt: `🔍 **ATS RESUME ARCHITECT: PHASE 1 OF 6**
----
+    prompt: `🔍 <b>ATS RESUME ARCHITECT: PHASE 1 OF 6</b>
+--------------------------------------------
 Provide your contact details and professional headline.
-**Required Input Format:**
-\`\`\`text
+<b>Required Input Format:</b>
+<pre>
 [Full Name]
 [Email Address] | [Phone Number] | [Location]
 [LinkedIn Profile URL or GitHub]
 [Professional Headline - e.g., UPSC CSE Aspirant / Quantitative Analyst]
-\`\`\`
-*(Send your details in a single message to proceed)*`
+</pre>
+<i>(Send your details in a single message to proceed)</i>`
   },
   2: {
     title: "Phase 2: Professional / Academic Summary",
-    prompt: `🔍 **ATS RESUME ARCHITECT: PHASE 2 OF 6**
----
+    prompt: `🔍 <b>ATS RESUME ARCHITECT: PHASE 2 OF 6</b>
+--------------------------------------------
 Provide an action-verb heavy Professional or Academic Summary. Highlight your primary academic interests, discipline metrics, and competitive drive.
-**Example:**
-_"Driven and analytically rigorous Bachelor of Technology graduate with a strong foundation in Quantitative Aptitude and Indian Polity. Demonstrated capability in complex logical transformations, targeting national-level administrative positions. Highly disciplined, maintaining consistent learning metrics under stress."_`
+<b>Example:</b>
+<i>"Driven and analytically rigorous Bachelor of Technology graduate with a strong foundation in Quantitative Aptitude and Indian Polity. Demonstrated capability in complex logical transformations, targeting national-level administrative positions. Highly disciplined, maintaining consistent learning metrics under stress."</i>`
   },
   3: {
     title: "Phase 3: Academic History",
-    prompt: `🔍 **ATS RESUME ARCHITECT: PHASE 3 OF 6**
----
+    prompt: `🔍 <b>ATS RESUME ARCHITECT: PHASE 3 OF 6</b>
+--------------------------------------------
 Provide your Academic History in descending chronological order.
 Include: Degree, Institution, Year of Passing, and GPA / Percentage.
-**Required Input Format:**
-\`\`\`text
+<b>Required Input Format:</b>
+<pre>
 [Degree/Exam] | [Institution/Board] | [Passing Year] | [GPA or %]
-\`\`\`
-*(You can list multiple rows, one per line)*`
+</pre>
+<i>(You can list multiple rows, one per line)</i>`
   },
   4: {
     title: "Phase 4: Categorized Skill Matrix",
-    prompt: `🔍 **ATS RESUME ARCHITECT: PHASE 4 OF 6**
----
+    prompt: `🔍 <b>ATS RESUME ARCHITECT: PHASE 4 OF 6</b>
+--------------------------------------------
 Provide your skills classified into:
-1. **Core Competencies** (e.g., Indian History, Public Policy, Analytical Reasoning)
-2. **Technical Skills** (e.g., Python, LaTeX, Excel, SQL)
-3. **Languages** (e.g., Hindi, English, Sanskrit)
-**Format:**
-\`\`\`text
+1. <b>Core Competencies</b> (e.g., Indian History, Public Policy, Analytical Reasoning)
+2. <b>Technical Skills</b> (e.g., Python, LaTeX, Excel, SQL)
+3. <b>Languages</b> (e.g., Hindi, English, Sanskrit)
+<b>Format:</b>
+<pre>
 Core Competencies: [skills...]
 Technical Skills: [skills...]
 Languages: [languages...]
-\`\`\`
-`
+</pre>`
   },
   5: {
     title: "Phase 5: Projects, Papers & Exam Benchmarks",
-    prompt: `🔍 **ATS RESUME ARCHITECT: PHASE 5 OF 6**
----
+    prompt: `🔍 <b>ATS RESUME ARCHITECT: PHASE 5 OF 6</b>
+--------------------------------------------
 Provide academic projects, research papers, or competitive exam benchmarks (e.g., SSC CGL Tier 1 qualified with score, UPSC Pre marks, college research papers).
-**Format:**
-\`\`\`text
+<b>Format:</b>
+<pre>
 [Project or Exam name]: [Details, scores, or achievements]
-\`\`\`
-`
+</pre>`
   },
   6: {
     title: "Phase 6: Leadership & Experience",
-    prompt: `🔍 **ATS RESUME ARCHITECT: PHASE 6 OF 6**
----
+    prompt: `🔍 <b>ATS RESUME ARCHITECT: PHASE 6 OF 6</b>
+--------------------------------------------
 Provide internship details, institutional leadership (e.g., class representative, club lead), or work experience.
-**Format:**
-\`\`\`text
+<b>Format:</b>
+<pre>
 [Organization] | [Role] | [Duration]
 - [Key achievement using action verbs]
 - [Key achievement using action verbs]
-\`\`\`
-`
+</pre>`
   }
 };
 

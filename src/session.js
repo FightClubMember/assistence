@@ -3,6 +3,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { escapeHtml } from './utils.js';
 
 const SESSIONS_FILE = path.resolve('sessions.json');
 
@@ -82,33 +83,33 @@ export function getStatusCard(userId, username = "Cadet") {
   const rank = getRankTier(session.level);
   
   if (session.semesterExamMode) {
-    return `### **ASTRAOS INTERFACE: STATUS REPORT**
----
-👤 **USER:** @${username}
-⚠️ **ACADEMIC BANK ISOLATION PROTOCOL: ACTIVE**
-🚩 **STATUS:** competitive training tracks SUSPENDED.
-⚡ **ALLOCATED CAPACITY:** 100% University Semester Exam Prep.
+    return `<b>ASTRAOS INTERFACE: STATUS REPORT</b>
+--------------------------------------------
+👤 <b>USER:</b> @${escapeHtml(username)}
+⚠️ <b>ACADEMIC BANK ISOLATION PROTOCOL: ACTIVE</b>
+🚩 <b>STATUS:</b> competitive training tracks SUSPENDED.
+⚡ <b>ALLOCATED CAPACITY:</b> 100% University Semester Exam Prep.
 
----
-*Competitive tracking is paused. Focus on obtaining maximum GPA. Tell the bot '/semester off' to resume competitive mode.*`;
+--------------------------------------------
+<i>Competitive tracking is paused. Focus on obtaining maximum GPA. Tell the bot '/semester off' to resume competitive mode.</i>`;
   }
 
   const completedCount = Object.values(session.activeStudyBlocks).filter(Boolean).length;
   
-  return `### **ASTRAOS INTERFACE: STATUS REPORT**
----
-👤 **USER:** @${username}
-⚔️ **RANK:** *${rank}*
-📊 **LEVEL:** \`${session.level}\` | **XP:** \`${session.xp} XP\`
-🔥 **CONSISTENCY STREAK:** \`${session.streak} Days\`
-📈 **ACTIVE STAGE:** \`Stage ${session.stage}\`
+  return `<b>ASTRAOS INTERFACE: STATUS REPORT</b>
+--------------------------------------------
+👤 <b>USER:</b> @${escapeHtml(username)}
+⚔️ <b>RANK:</b> <i>${escapeHtml(rank)}</i>
+📊 <b>LEVEL:</b> <code>${session.level}</code> | <b>XP:</b> <code>${session.xp} XP</code>
+🔥 <b>CONSISTENCY STREAK:</b> <code>${session.streak} Days</code>
+📈 <b>ACTIVE STAGE:</b> <code>Stage ${session.stage}</code>
 
----
-### **TODAY'S COMPLIANCE CHECKLIST**
-- [${session.activeStudyBlocks.morning ? 'x' : ' '}] **Morning Block** (Conceptual GS Video)
-- [${session.activeStudyBlocks.afternoon ? 'x' : ' '}] **Afternoon Block** (Arithmetic Drill)
-- [${session.activeStudyBlocks.evening ? 'x' : ' '}] **Evening Block** (Language Remediation)
+--------------------------------------------
+<b>TODAY'S COMPLIANCE CHECKLIST:</b>
+- [${session.activeStudyBlocks.morning ? 'x' : ' '}] <b>Morning Block</b> (Conceptual GS Video)
+- [${session.activeStudyBlocks.afternoon ? 'x' : ' '}] <b>Afternoon Block</b> (Arithmetic Drill)
+- [${session.activeStudyBlocks.evening ? 'x' : ' '}] <b>Evening Block</b> (Language Remediation)
 
-📊 **Daily Compliance:** \`${completedCount}/3\` Blocks Logged.
+📊 <b>Daily Compliance:</b> <code>${completedCount}/3</code> Blocks Logged.
 `;
 }

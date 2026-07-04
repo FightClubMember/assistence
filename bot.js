@@ -6,6 +6,7 @@ import { getSyllabusReport } from './src/syllabus.js';
 import { getStatusCard, updateSession, getSession, addXp, toggleSemesterMode } from './src/session.js';
 import { startDuel, getDuel, submitAnswer, renderQuestion, processScorecard, clearDuel } from './src/duel.js';
 import { startResume, getResumeState, savePhaseData, clearResume } from './src/resume.js';
+import { escapeHtml } from './src/utils.js';
 
 export function setupBot(token) {
   const bot = new Telegraf(token);
@@ -22,18 +23,18 @@ export function setupBot(token) {
     const userText = ctx.message && ctx.message.text ? ctx.message.text : "";
     const repairs = scanText(userText);
     const finalMsg = text + repairs;
-    return ctx.reply(finalMsg, { parse_mode: 'Markdown', ...extra });
+    return ctx.reply(finalMsg, { parse_mode: 'HTML', ...extra });
   }
 
   // Helper for ambiguity elimination checklist
   function getAmbiguityChecklist() {
-    return `### **ASTRAOS CORE: AMBIGUITY ELIMINATION CHECKLIST**
----
+    return `<b>ASTRAOS CORE: AMBIGUITY ELIMINATION CHECKLIST</b>
+--------------------------------------------
 The system detected an ambiguous text entry. Select a command from the keyboard below or use one of these precise options:
 
-1. **Option 1:** Type **/status** or click \`📊 Status / Profile\` to review your learning profile and log study blocks.
-2. **Option 2:** Type **/duel** or click \`⚔️ Study Duel\` to initiate an interactive 5-question mock exam.
-3. **Option 3:** Type **/makeresume** or click \`📄 ATS Resume\` to begin generating an ATS-friendly CV.
+1. <b>Option 1:</b> Type <code>/status</code> or click <code>📊 Status / Profile</code> to review your learning profile and log study blocks.
+2. <b>Option 2:</b> Type <code>/duel</code> or click <code>⚔️ Study Duel</code> to initiate an interactive 5-question mock exam.
+3. <b>Option 3:</b> Type <code>/makeresume</code> or click <code>📄 ATS Resume</code> to begin generating an ATS-friendly CV.
 `;
   }
 
@@ -46,10 +47,10 @@ The system detected an ambiguous text entry. Select a command from the keyboard 
     // Initialize session
     getSession(userId);
 
-    const welcomeText = `### **ASTRAOS CORE v5.0-ENTERPRISE**
----
-**PEDAGOGICAL SYSTEM DEPLOYED**
-Welcome, @${username}. The Academic Operating System is online.
+    const welcomeText = `<b>ASTRAOS CORE v5.0-ENTERPRISE</b>
+--------------------------------------------
+<b>PEDAGOGICAL SYSTEM DEPLOYED</b>
+Welcome, @${escapeHtml(username)}. The Academic Operating System is online.
 
 Use the clinical menu buttons below to allocate cognitive load, run study duels, and evaluate syntax.
 `;
@@ -75,7 +76,7 @@ Use the clinical menu buttons below to allocate cognitive load, run study duels,
     const session = getSession(userId);
     
     if (session.semesterExamMode) {
-      return replyWithLexicalCheck(ctx, `⚠️ **ACCESS DENIED:** Competitive study duels are locked while the **Academic Bank Isolation Protocol** is active. Disable semester mode to unlock.`);
+      return replyWithLexicalCheck(ctx, `⚠️ <b>ACCESS DENIED:</b> Competitive study duels are locked while the <b>Academic Bank Isolation Protocol</b> is active. Disable semester mode to unlock.`);
     }
 
     const inlineKeyboard = Markup.inlineKeyboard([
@@ -84,7 +85,7 @@ Use the clinical menu buttons below to allocate cognitive load, run study duels,
       [Markup.button.callback('🔤 Language Mastery Matrix', 'select_duel_lang')]
     ]);
 
-    return replyWithLexicalCheck(ctx, `### **⚔️ STUDY DUEL: FIELD SELECT**\n---\nChoose your academic combat arena:`, inlineKeyboard);
+    return replyWithLexicalCheck(ctx, `<b>⚔️ STUDY DUEL: FIELD SELECT</b>\n--------------------------------------------\nChoose your academic combat arena:`, inlineKeyboard);
   });
 
   bot.command('makeresume', async (ctx) => {
@@ -107,9 +108,9 @@ Use the clinical menu buttons below to allocate cognitive load, run study duels,
     }
 
     if (cancelled) {
-      return ctx.reply("🚫 **Operation Aborted.** Main menu active.", { parse_mode: 'Markdown', ...mainMenu });
+      return ctx.reply("🚫 <b>Operation Aborted.</b> Main menu active.", { parse_mode: 'HTML', ...mainMenu });
     } else {
-      return ctx.reply("No active duel or resume process running.", { parse_mode: 'Markdown' });
+      return ctx.reply("No active duel or resume process running.", { parse_mode: 'HTML' });
     }
   });
 
@@ -119,18 +120,18 @@ Use the clinical menu buttons below to allocate cognitive load, run study duels,
     const session = getSession(userId);
     
     if (session.semesterExamMode) {
-      return ctx.reply("⚠️ **Academic Bank Isolation Protocol** is active. Track semester work directly.");
+      return ctx.reply("⚠️ <b>Academic Bank Isolation Protocol</b> is active. Track semester work directly.", { parse_mode: 'HTML' });
     }
 
     const parts = ctx.message.text.split(" ");
     const block = parts[1]?.toLowerCase();
 
     if (!block || !['morning', 'afternoon', 'evening'].includes(block)) {
-      return ctx.reply(`Use syntax: \`/complete morning\`, \`/complete afternoon\`, or \`/complete evening\``);
+      return ctx.reply(`Use syntax: <code>/complete morning</code>, <code>/complete afternoon</code>, or <code>/complete evening</code>`, { parse_mode: 'HTML' });
     }
 
     if (session.activeStudyBlocks[block]) {
-      return ctx.reply(`Block **${block}** has already been completed today.`, { parse_mode: 'Markdown' });
+      return ctx.reply(`Block <b>${escapeHtml(block)}</b> has already been completed today.`, { parse_mode: 'HTML' });
     }
 
     session.activeStudyBlocks[block] = true;
@@ -141,20 +142,20 @@ Use the clinical menu buttons below to allocate cognitive load, run study duels,
     let streakText = "";
     if (allDone) {
       session.streak += 1;
-      streakText = `\n🔥 **Streak Updated:** \`${session.streak} Days\``;
+      streakText = `\n🔥 <b>Streak Updated:</b> <code>${session.streak} Days</code>`;
       
       // Auto-unlock stages based on streak
       if (session.streak >= 21 && session.stage < 3) {
         session.stage = 3;
-        streakText += `\n🏆 **STAGE 3 UNLOCKED! Elite Warrior Grid active.**`;
+        streakText += `\n🏆 <b>STAGE 3 UNLOCKED! Elite Warrior Grid active.</b>`;
       } else if (session.streak >= 7 && session.stage < 2) {
         session.stage = 2;
-        streakText += `\n📈 **STAGE 2 UNLOCKED! Daylight Stabilization active.**`;
+        streakText += `\n📈 <b>STAGE 2 UNLOCKED! Daylight Stabilization active.</b>`;
       }
     }
     updateSession(userId, session);
 
-    return ctx.reply(`✅ **Block ${block} verified.** logged +10 XP.${streakText}\nUse /status to see checklist.`, { parse_mode: 'Markdown' });
+    return ctx.reply(`✅ <b>Block ${escapeHtml(block)} verified.</b> logged +10 XP.${streakText}\nUse /status to see checklist.`, { parse_mode: 'HTML' });
   });
 
   // Semester mode command
@@ -166,12 +167,12 @@ Use the clinical menu buttons below to allocate cognitive load, run study duels,
     if (action === 'on') {
       toggleSemesterMode(userId, true);
       const card = getStatusCard(userId);
-      return ctx.reply(card, { parse_mode: 'Markdown' });
+      return ctx.reply(card, { parse_mode: 'HTML' });
     } else if (action === 'off') {
       toggleSemesterMode(userId, false);
-      return ctx.reply("✅ **Semester Mode Deactivated.** Competitive exam tracks and Study Duels restored.", { parse_mode: 'Markdown' });
+      return ctx.reply("✅ <b>Semester Mode Deactivated.</b> Competitive exam tracks and Study Duels restored.", { parse_mode: 'HTML' });
     } else {
-      return ctx.reply("Use syntax: \`/semester on\` or \`/semester off\`");
+      return ctx.reply("Use syntax: <code>/semester on</code> or <code>/semester off</code>", { parse_mode: 'HTML' });
     }
   });
 
@@ -199,7 +200,7 @@ Use the clinical menu buttons below to allocate cognitive load, run study duels,
   });
 
   bot.hears('⚔️ Study Duel', async (ctx) => {
-    return ctx.reply("Type `/duel` to select field and launch.");
+    return ctx.reply("Type <code>/duel</code> to select field and launch.", { parse_mode: 'HTML' });
   });
 
   bot.hears('📄 ATS Resume', async (ctx) => {
@@ -212,13 +213,13 @@ Use the clinical menu buttons below to allocate cognitive load, run study duels,
     const userId = ctx.from.id;
     toggleSemesterMode(userId, true);
     const card = getStatusCard(userId);
-    return ctx.reply(card, { parse_mode: 'Markdown' });
+    return ctx.reply(card, { parse_mode: 'HTML' });
   });
 
   bot.hears('✅ Semester Mode OFF', async (ctx) => {
     const userId = ctx.from.id;
     toggleSemesterMode(userId, false);
-    return ctx.reply("✅ **Semester Mode Deactivated.** Competitive exam tracks and Study Duels restored.", { parse_mode: 'Markdown' });
+    return ctx.reply("✅ <b>Semester Mode Deactivated.</b> Competitive exam tracks and Study Duels restored.", { parse_mode: 'HTML' });
   });
 
   // --- CALLBACK QUERY HANDLERS (INLINE BUTTONS) ---
@@ -241,7 +242,7 @@ Use the clinical menu buttons below to allocate cognitive load, run study duels,
       ]);
 
       await ctx.answerCbQuery("Duel initiated.");
-      return ctx.editMessageText(rendered, { parse_mode: 'Markdown', ...inlineButtons });
+      return ctx.editMessageText(rendered, { parse_mode: 'HTML', ...inlineButtons });
     }
 
     // Duel answer submitting
@@ -257,19 +258,19 @@ Use the clinical menu buttons below to allocate cognitive load, run study duels,
       const result = submitAnswer(userId, optionIndex);
       await ctx.answerCbQuery(result.isCorrect ? "Correct!" : "Incorrect!");
 
-      let resultHeader = result.isCorrect ? "✅ **CORRECT VERIFICATION**" : "❌ **INCORRECT SUBMISSION**";
-      let feedback = `${resultHeader}\n\n• **Correct Option:** ${result.correctAnswerText}\n• **Resolution Logic:** _${result.explanation}_\n\n`;
+      let resultHeader = result.isCorrect ? "✅ <b>CORRECT VERIFICATION</b>" : "❌ <b>INCORRECT SUBMISSION</b>";
+      let feedback = `${resultHeader}\n\n• <b>Correct Option:</b> ${escapeHtml(result.correctAnswerText)}\n• <b>Resolution Logic:</b> <i>${escapeHtml(result.explanation)}</i>\n\n`;
 
       if (duelState.currentIndex + 1 < duelState.questions.length) {
         const nextBtn = Markup.inlineKeyboard([
           [Markup.button.callback('➡️ Next Question', 'duel_next')]
         ]);
-        return ctx.editMessageText(feedback + "*Click below to advance to the next combat question.*", { parse_mode: 'Markdown', ...nextBtn });
+        return ctx.editMessageText(feedback + "<i>Click below to advance to the next combat question.</i>", { parse_mode: 'HTML', ...nextBtn });
       } else {
         const finishBtn = Markup.inlineKeyboard([
           [Markup.button.callback('📊 View Final Scorecard', 'duel_finish')]
         ]);
-        return ctx.editMessageText(feedback + "*All 5 challenges completed.*", { parse_mode: 'Markdown', ...finishBtn });
+        return ctx.editMessageText(feedback + "<i>All 5 challenges completed.</i>", { parse_mode: 'HTML', ...finishBtn });
       }
     }
 
@@ -291,14 +292,14 @@ Use the clinical menu buttons below to allocate cognitive load, run study duels,
       ]);
 
       await ctx.answerCbQuery();
-      return ctx.editMessageText(rendered, { parse_mode: 'Markdown', ...inlineButtons });
+      return ctx.editMessageText(rendered, { parse_mode: 'HTML', ...inlineButtons });
     }
 
     // Duel finish scorecard render
     if (data === 'duel_finish') {
       const scorecard = processScorecard(userId, username);
       await ctx.answerCbQuery("Scorecard loaded.");
-      return ctx.editMessageText(scorecard, { parse_mode: 'Markdown' });
+      return ctx.editMessageText(scorecard, { parse_mode: 'HTML' });
     }
   });
 
@@ -314,12 +315,12 @@ Use the clinical menu buttons below to allocate cognitive load, run study duels,
       const result = savePhaseData(userId, text);
       if (result) {
         if (result.done) {
-          await ctx.reply("🎉 **ATS Resume compilation completed!** Here is your Markdown format:", { parse_mode: 'Markdown' });
-          await ctx.reply(`\`\`\`markdown\n${result.resumeMarkdown}\n\`\`\``);
-          await ctx.reply("Below is your raw LaTeX code. Copy it directly into Overleaf:", { parse_mode: 'Markdown' });
-          return ctx.reply(`\`\`\`latex\n${result.resumeLatex}\n\`\`\``);
+          await ctx.reply("🎉 <b>ATS Resume compilation completed!</b> Here is your Markdown format:", { parse_mode: 'HTML' });
+          await ctx.reply(`<pre><code class="language-markdown">${escapeHtml(result.resumeMarkdown)}</code></pre>`, { parse_mode: 'HTML' });
+          await ctx.reply("Below is your raw LaTeX code. Copy it directly into Overleaf:", { parse_mode: 'HTML' });
+          return ctx.reply(`<pre><code class="language-latex">${escapeHtml(result.resumeLatex)}</code></pre>`, { parse_mode: 'HTML' });
         } else {
-          return ctx.reply(result.nextPrompt, { parse_mode: 'Markdown' });
+          return ctx.reply(result.nextPrompt, { parse_mode: 'HTML' });
         }
       }
     }
@@ -328,11 +329,11 @@ Use the clinical menu buttons below to allocate cognitive load, run study duels,
     if (text) {
       const repairs = scanText(text);
       if (repairs) {
-        return ctx.reply(`### **ASTRAOS COGNITIVE CORE SCAN**\n---\nAnalysis of text complete.${repairs}`, { parse_mode: 'Markdown' });
+        return ctx.reply(`<b>ASTRAOS COGNITIVE CORE SCAN</b>\n--------------------------------------------\nAnalysis of text complete.${repairs}`, { parse_mode: 'HTML' });
       } else {
         // Clear text, no typos, no active command -> trigger ambiguity elimination checklist
         const checklist = getAmbiguityChecklist();
-        return ctx.reply(checklist, { parse_mode: 'Markdown', ...mainMenu });
+        return ctx.reply(checklist, { parse_mode: 'HTML', ...mainMenu });
       }
     }
   });

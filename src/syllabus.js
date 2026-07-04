@@ -1,39 +1,47 @@
 // Dynamic Syllabus & Cognitive Load Allocator (Layer B)
 // Manages study schedules, cognitive load limits, and stage state machines.
 
+import { escapeHtml } from './utils.js';
+
 export const STAGES = {
   1: {
     name: "Stage 1: Habit Architecture Baseline",
     hours: "3.0 Hours / Day",
     protocol: "Three Strict 1-Hour Blocks",
     description: "Build fundamental habits from absolute zero without cognitive overload.",
-    schedule: `| Block | Duration | Domain / Subject | Focus Area |
-| :--- | :--- | :--- | :--- |
-| **Morning** | 1 Hour | Conceptual GS Storytelling | Video-only concept parsing (No dense manual reads) |
-| **Afternoon** | 1 Hour | Arithmetic Foundations | Speed math, tables 1-20, squares 1-30, cubes 1-15, fractions |
-| **Evening** | 1 Hour | Language Remediation | 30m English spellings + 30m Hindi text copy & Matra check |`
+    schedule: `<pre>
+Block     | Dur | Subject        | Focus
+--------------------------------------------------------
+Morning   | 1H  | GS Story       | Video-only concept parsing
+Afternoon | 1H  | Speed Math     | Tables 1-20, squares 1-30
+Evening   | 1H  | Lang Remed     | 30m English + 30m Hindi
+</pre>`
   },
   2: {
     name: "Stage 2: Daylight Stabilization Core",
     hours: "5.5 Hours / Day",
     protocol: "NCERT & Supervised Solving Integration",
     description: "Unlocked after a 7-day streak. Transition into structured textbook parsing.",
-    schedule: `| Block | Duration | Domain / Subject | Focus Area |
-| :--- | :--- | :--- | :--- |
-| **Morning** | 2 Hours | NCERT Basics | Foundation reading of Geography, History, and Polity manuals |
-| **Afternoon** | 2 Hours | Supervised Problem Solving | NCERT back-exercises and elementary math applications |
-| **Evening** | 1.5 Hours | Core Language & Vocab | Advanced vocabulary, English error grammar, Hindi spelling grids |`
+    schedule: `<pre>
+Block     | Dur  | Subject        | Focus
+--------------------------------------------------------
+Morning   | 2H   | NCERT Basics   | Geography, History, Polity
+Afternoon | 2H   | Solving        | NCERT exercises + math
+Evening   | 1.5H | Lang & Vocab   | Vocab + Hindi spelling grids
+</pre>`
   },
   3: {
     name: "Stage 3: Elite Warrior Grid",
     hours: "7.5 Hours / Day",
     protocol: "9-to-5 Desk Job Strategy",
     description: "Unlocked after a 21-day streak. High-velocity reference material study.",
-    schedule: `| Block | Duration | Domain / Subject | Focus Area |
-| :--- | :--- | :--- | :--- |
-| **Morning** | 3 Hours | Deep Reference Texts | Laxmikanth (Polity) or Spectrum (Modern History) chapters |
-| **Afternoon** | 2.5 Hours | Advanced Quantitative | Algebra transformations, geometry, and CDS/SSC mock sets |
-| **Evening** | 2 Hours | Current Affairs & Recovery | Newspaper analysis, monthly magazines, day recovery review |`
+    schedule: `<pre>
+Block     | Dur  | Subject        | Focus
+--------------------------------------------------------
+Morning   | 3H   | Deep Reference | Laxmikanth or Spectrum
+Afternoon | 2.5H | Advanced Quant | Algebra, geometry, mocks
+Evening   | 2H   | Current/Recov  | Newspaper + review recovery
+</pre>`
   }
 };
 
@@ -45,25 +53,25 @@ export function getSyllabusReport(stageNum, streak = 0) {
   
   let lockStatus = "";
   if (stageNum === 1) {
-    lockStatus = `🔓 **Stage 1 Active.** (Streak: **${streak}/7** days to unlock Stage 2)`;
+    lockStatus = `🔓 <b>Stage 1 Active.</b> (Streak: <b>${streak}/7</b> days to unlock Stage 2)`;
   } else if (stageNum === 2) {
-    lockStatus = `🔓 **Stage 2 Active.** (Streak: **${streak}/21** days to unlock Stage 3)`;
+    lockStatus = `🔓 <b>Stage 2 Active.</b> (Streak: <b>${streak}/21</b> days to unlock Stage 3)`;
   } else {
-    lockStatus = `🔥 **Stage 3 ACTIVE - Elite Warrior Mode.** (Streak: **${streak}** days)`;
+    lockStatus = `🔥 <b>Stage 3 ACTIVE - Elite Warrior Mode.</b> (Streak: <b>${streak}</b> days)`;
   }
 
-  return `### **ASTRAOS COGNITIVE LOAD ALLOCATOR**
----
-**ACTIVE PHASE:** *${stage.name}*
-**DAILY HOURLY LOAD:** \`${stage.hours}\`
-**OPERATIONAL PROTOCOL:** *${stage.protocol}*
-**STATUS:** ${lockStatus}
+  return `<b>ASTRAOS COGNITIVE LOAD ALLOCATOR</b>
+--------------------------------------------
+<b>ACTIVE PHASE:</b> <i>${escapeHtml(stage.name)}</i>
+<b>DAILY HOURLY LOAD:</b> <code>${escapeHtml(stage.hours)}</code>
+<b>OPERATIONAL PROTOCOL:</b> <i>${escapeHtml(stage.protocol)}</i>
+<b>STATUS:</b> ${lockStatus}
 
-**Phase Description:**  
-_${stage.description}_
+<b>Phase Description:</b>  
+<i>${escapeHtml(stage.description)}</i>
 
----
-### **EXECUTION TIMELINE**
+--------------------------------------------
+<b>EXECUTION TIMELINE:</b>
 ${stage.schedule}
 `;
 }

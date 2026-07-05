@@ -1,21 +1,21 @@
-// AstraOS Core Telegram Bot Logic (Main router)
+// AstraOS Core Telegram Bot Logic (Empathetic Companion)
 
 import { Telegraf, Markup } from 'telegraf';
 import { scanText } from './src/lexical.js';
 import { getSyllabusReport } from './src/syllabus.js';
-import { getStatusCard, updateSession, getSession, addXp, toggleSemesterMode } from './src/session.js';
-import { startDuel, getDuel, submitAnswer, renderQuestion, processScorecard, clearDuel } from './src/duel.js';
-import { startResume, getResumeState, savePhaseData, clearResume } from './src/resume.js';
+import { getStatusCard, updateSession, getSession, addXp, toggleSemesterMode, logStudySession, getPerformanceHistory, getLocalDateString } from './src/session.js';
+import { askGroq, generateRecallQuiz } from './src/groq.js';
 import { escapeHtml } from './src/utils.js';
 
 export function setupBot(token) {
   const bot = new Telegraf(token);
 
-  // Global menu reply keyboard
+  // Friendly Reply Keyboard
   const mainMenu = Markup.keyboard([
-    ['📊 Status / Profile', '📚 Study Syllabus'],
-    ['⚔️ Study Duel', '📄 ATS Resume'],
-    ['🚫 Semester Mode ON', '✅ Semester Mode OFF']
+    ['📊 Dashboard', '⏱️ Log Study'],
+    ['📈 History', '🧠 Recall Quiz'],
+    ['🤖 AI Tutor', '🔔 Reminders'],
+    ['🎓 Semester Mode']
   ]).resize();
 
   // Helper to send message with lexical repair appended
@@ -26,139 +26,87 @@ export function setupBot(token) {
     return ctx.reply(finalMsg, { parse_mode: 'HTML', ...extra });
   }
 
-  // Helper for ambiguity elimination checklist
-  function getAmbiguityChecklist() {
-    return `<b>ASTRAOS CORE: AMBIGUITY ELIMINATION CHECKLIST</b>
---------------------------------------------
-The system detected an ambiguous text entry. Select a command from the keyboard below or use one of these precise options:
-
-1. <b>Option 1:</b> Type <code>/status</code> or click <code>📊 Status / Profile</code> to review your learning profile and log study blocks.
-2. <b>Option 2:</b> Type <code>/duel</code> or click <code>⚔️ Study Duel</code> to initiate an interactive 5-question mock exam.
-3. <b>Option 3:</b> Type <code>/makeresume</code> or click <code>📄 ATS Resume</code> to begin generating an ATS-friendly CV.
-`;
-  }
-
   // --- COMMAND HANDLERS ---
 
   bot.start(async (ctx) => {
     const userId = ctx.from.id;
-    const username = ctx.from.username || ctx.from.first_name || "Cadet";
+    const username = ctx.from.username || ctx.from.first_name || "friend";
     
     // Initialize session
     getSession(userId);
 
-    const welcomeText = `<b>ASTRAOS CORE v5.0-ENTERPRISE</b>
+    const welcomeText = `👋 <b>Hello, @${escapeHtml(username)}! Welome to your Study Companion!</b>
 --------------------------------------------
-<b>PEDAGOGICAL SYSTEM DEPLOYED</b>
-Welcome, @${escapeHtml(username)}. The Academic Operating System is online.
+I am here to help you stay on track, support your learning, and make your study journey less lonely. 
 
-Use the clinical menu buttons below to allocate cognitive load, run study duels, and evaluate syntax.
-`;
+Here is what we can do together:
+• 📊 Check your <b>Dashboard</b> for streaks and daily goals.
+• ⏱️ Click <b>Log Study</b> after a study session to record your hours.
+• 📈 View your study charts in <b>History</b>.
+• 🧠 Generate a personalized <b>Recall Quiz</b> based on what you studied today.
+• 🤖 Chat with your friendly <b>AI Tutor</b> for explanations or motivational support.
+
+Let's do this together, one day at a time! ❤️`;
     return replyWithLexicalCheck(ctx, welcomeText, mainMenu);
   });
 
   bot.command('status', async (ctx) => {
     const userId = ctx.from.id;
-    const username = ctx.from.username || ctx.from.first_name || "Cadet";
-    const statusCard = getStatusCard(userId, username);
-    return replyWithLexicalCheck(ctx, statusCard);
+    const username = ctx.from.username || ctx.from.first_name || "friend";
+    return replyWithLexicalCheck(ctx, getStatusCard(userId, username));
+  });
+
+  bot.command('history', async (ctx) => {
+    const userId = ctx.from.id;
+    return replyWithLexicalCheck(ctx, getPerformanceHistory(userId));
   });
 
   bot.command('syllabus', async (ctx) => {
     const userId = ctx.from.id;
     const session = getSession(userId);
-    const report = getSyllabusReport(session.stage, session.streak);
-    return replyWithLexicalCheck(ctx, report);
+    return replyWithLexicalCheck(ctx, getSyllabusReport(session.stage, session.streak));
   });
 
-  bot.command('duel', async (ctx) => {
+  bot.command('log', async (ctx) => {
     const userId = ctx.from.id;
     const session = getSession(userId);
-    
+
     if (session.semesterExamMode) {
-      return replyWithLexicalCheck(ctx, `⚠️ <b>ACCESS DENIED:</b> Competitive study duels are locked while the <b>Academic Bank Isolation Protocol</b> is active. Disable semester mode to unlock.`);
+      return ctx.reply("🎓 <b>Semester Mode is active.</b> Competitive logs are paused, but if you want to record college study hours, tell me to turn /semester off first!", { parse_mode: 'HTML' });
     }
 
-    const inlineKeyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('📐 Quantitative Speed Arena', 'select_duel_quant')],
-      [Markup.button.callback('🏰 Core GS Citadel', 'select_duel_gs')],
-      [Markup.button.callback('🔤 Language Mastery Matrix', 'select_duel_lang')]
-    ]);
-
-    return replyWithLexicalCheck(ctx, `<b>⚔️ STUDY DUEL: FIELD SELECT</b>\n--------------------------------------------\nChoose your academic combat arena:`, inlineKeyboard);
-  });
-
-  bot.command('makeresume', async (ctx) => {
-    const userId = ctx.from.id;
-    const prompt = startResume(userId);
-    return replyWithLexicalCheck(ctx, prompt);
-  });
-
-  bot.command('cancel', async (ctx) => {
-    const userId = ctx.from.id;
-    let cancelled = false;
-
-    if (getResumeState(userId)) {
-      clearResume(userId);
-      cancelled = true;
-    }
-    if (getDuel(userId)) {
-      clearDuel(userId);
-      cancelled = true;
-    }
-
-    if (cancelled) {
-      return ctx.reply("🚫 <b>Operation Aborted.</b> Main menu active.", { parse_mode: 'HTML', ...mainMenu });
-    } else {
-      return ctx.reply("No active duel or resume process running.", { parse_mode: 'HTML' });
-    }
-  });
-
-  // Log completion of study blocks
-  bot.command('complete', async (ctx) => {
-    const userId = ctx.from.id;
-    const session = getSession(userId);
-    
-    if (session.semesterExamMode) {
-      return ctx.reply("⚠️ <b>Academic Bank Isolation Protocol</b> is active. Track semester work directly.", { parse_mode: 'HTML' });
-    }
-
-    const parts = ctx.message.text.split(" ");
-    const block = parts[1]?.toLowerCase();
-
-    if (!block || !['morning', 'afternoon', 'evening'].includes(block)) {
-      return ctx.reply(`Use syntax: <code>/complete morning</code>, <code>/complete afternoon</code>, or <code>/complete evening</code>`, { parse_mode: 'HTML' });
-    }
-
-    if (session.activeStudyBlocks[block]) {
-      return ctx.reply(`Block <b>${escapeHtml(block)}</b> has already been completed today.`, { parse_mode: 'HTML' });
-    }
-
-    session.activeStudyBlocks[block] = true;
-    addXp(userId, 10); // +10 XP per study block logged
-    
-    // Check if all blocks are complete
-    const allDone = Object.values(session.activeStudyBlocks).every(Boolean);
-    let streakText = "";
-    if (allDone) {
-      session.streak += 1;
-      streakText = `\n🔥 <b>Streak Updated:</b> <code>${session.streak} Days</code>`;
-      
-      // Auto-unlock stages based on streak
-      if (session.streak >= 21 && session.stage < 3) {
-        session.stage = 3;
-        streakText += `\n🏆 <b>STAGE 3 UNLOCKED! Elite Warrior Grid active.</b>`;
-      } else if (session.streak >= 7 && session.stage < 2) {
-        session.stage = 2;
-        streakText += `\n📈 <b>STAGE 2 UNLOCKED! Daylight Stabilization active.</b>`;
-      }
-    }
+    session.loggingState = 'AWAITING_SUBJECT';
+    session.tempLog = {};
     updateSession(userId, session);
 
-    return ctx.reply(`✅ <b>Block ${escapeHtml(block)} verified.</b> logged +10 XP.${streakText}\nUse /status to see checklist.`, { parse_mode: 'HTML' });
+    return ctx.reply("⏱️ <b>Let's log your study session!</b>\n\nWhat subject or topic did you focus on? (e.g. <i>Indian Polity, Speed Math, Geography NCERT</i>)", { parse_mode: 'HTML', reply_markup: { remove_keyboard: true } });
   });
 
-  // Semester mode command
+  bot.command('ask', async (ctx) => {
+    const query = ctx.message.text.substring(5).trim();
+    if (!query) {
+      return ctx.reply("🤖 <b>AI Tutor:</b> Please write your question after the command. For example: <code>/ask explain photosynthesis simply</code>", { parse_mode: 'HTML' });
+    }
+
+    const waitMsg = await ctx.reply("🤔 <i>Thinking and compiling explanation...</i>", { parse_mode: 'HTML' });
+    const response = await askGroq(query, `The student asked via /ask command. Keep the response highly supportive.`);
+    
+    return ctx.telegram.editMessageText(ctx.chat.id, waitMsg.message_id, null, response, { parse_mode: 'HTML' });
+  });
+
+  bot.command('recall', async (ctx) => {
+    const userId = ctx.from.id;
+    const session = getSession(userId);
+    const today = getLocalDateString();
+    const todayLogs = session.studyLogs.filter(l => l.date === today);
+
+    const waitMsg = await ctx.reply("🧠 <i>Analyzing today's study topics and generating your active recall quiz... Please wait a few seconds.</i>", { parse_mode: 'HTML' });
+    const username = ctx.from.username || ctx.from.first_name || "friend";
+    const quizResponse = await generateRecallQuiz(todayLogs, username);
+
+    return ctx.telegram.editMessageText(ctx.chat.id, waitMsg.message_id, null, quizResponse, { parse_mode: 'HTML' });
+  });
+
   bot.command('semester', async (ctx) => {
     const userId = ctx.from.id;
     const parts = ctx.message.text.split(" ");
@@ -166,31 +114,76 @@ Use the clinical menu buttons below to allocate cognitive load, run study duels,
 
     if (action === 'on') {
       toggleSemesterMode(userId, true);
-      const card = getStatusCard(userId);
-      return ctx.reply(card, { parse_mode: 'HTML' });
+      return ctx.reply(getStatusCard(userId), { parse_mode: 'HTML', ...mainMenu });
     } else if (action === 'off') {
       toggleSemesterMode(userId, false);
-      return ctx.reply("✅ <b>Semester Mode Deactivated.</b> Competitive exam tracks and Study Duels restored.", { parse_mode: 'HTML' });
+      return ctx.reply("✅ <b>Semester Mode deactivated!</b> Welcome back to your competitive study timeline. Let's do this! ❤️", { parse_mode: 'HTML', ...mainMenu });
     } else {
-      return ctx.reply("Use syntax: <code>/semester on</code> or <code>/semester off</code>", { parse_mode: 'HTML' });
+      const session = getSession(userId);
+      toggleSemesterMode(userId, !session.semesterExamMode);
+      return ctx.reply(getStatusCard(userId), { parse_mode: 'HTML', ...mainMenu });
     }
   });
 
-  // Reset daily study blocks (for testing or cron)
-  bot.command('reset_blocks', async (ctx) => {
+  bot.command('cancel', async (ctx) => {
     const userId = ctx.from.id;
     const session = getSession(userId);
-    session.activeStudyBlocks = { morning: false, afternoon: false, evening: false };
-    updateSession(userId, session);
-    return ctx.reply("🔄 Daily study blocks reset. Use /status to view.");
+    let cancelled = false;
+
+    if (session.loggingState) {
+      session.loggingState = null;
+      session.tempLog = null;
+      updateSession(userId, session);
+      cancelled = true;
+    }
+
+    if (cancelled) {
+      return ctx.reply("🚫 <b>Logging process cancelled.</b> I've brought you back to the main menu.", { parse_mode: 'HTML', ...mainMenu });
+    } else {
+      return ctx.reply("No active logging flow is running. You are in the main menu!", { parse_mode: 'HTML', ...mainMenu });
+    }
+  });
+
+  bot.command('remind', async (ctx) => {
+    const userId = ctx.from.id;
+    const session = getSession(userId);
+
+    const inlineKeyboard = Markup.inlineKeyboard([
+      [Markup.button.callback(session.remindersEnabled ? '🔔 Disable Reminders' : '🔕 Enable Reminders', 'toggle_reminders')]
+    ]);
+
+    return ctx.reply(`🔔 <b>Reminders Configuration</b>
+--------------------------------------------
+Status: <b>${session.remindersEnabled ? 'Enabled' : 'Disabled'}</b>
+We will send you friendly support prompts to help keep you consistent!`, { parse_mode: 'HTML', ...inlineKeyboard });
   });
 
   // --- BUTTON/KEYBOARD TEXT HANDLERS ---
 
-  bot.hears('📊 Status / Profile', async (ctx) => {
+  bot.hears('📊 Dashboard', async (ctx) => {
     const userId = ctx.from.id;
-    const username = ctx.from.username || ctx.from.first_name || "Cadet";
+    const username = ctx.from.username || ctx.from.first_name || "friend";
     return replyWithLexicalCheck(ctx, getStatusCard(userId, username));
+  });
+
+  bot.hears('⏱️ Log Study', async (ctx) => {
+    const userId = ctx.from.id;
+    const session = getSession(userId);
+
+    if (session.semesterExamMode) {
+      return ctx.reply("🎓 <b>Semester Mode is active.</b> Competitive tracking is paused. If you want to log study, turn /semester off first!", { parse_mode: 'HTML' });
+    }
+
+    session.loggingState = 'AWAITING_SUBJECT';
+    session.tempLog = {};
+    updateSession(userId, session);
+
+    return ctx.reply("⏱️ <b>Let's log your study session!</b>\n\nWhat subject or topic did you focus on? (e.g. <i>Indian Polity, Speed Math, Geography NCERT</i>)\n\n👉 <i>Type /cancel to abort at any time.</i>", { parse_mode: 'HTML', reply_markup: { remove_keyboard: true } });
+  });
+
+  bot.hears('📈 History', async (ctx) => {
+    const userId = ctx.from.id;
+    return replyWithLexicalCheck(ctx, getPerformanceHistory(userId));
   });
 
   bot.hears('📚 Study Syllabus', async (ctx) => {
@@ -199,107 +192,74 @@ Use the clinical menu buttons below to allocate cognitive load, run study duels,
     return replyWithLexicalCheck(ctx, getSyllabusReport(session.stage, session.streak));
   });
 
-  bot.hears('⚔️ Study Duel', async (ctx) => {
-    return ctx.reply("Type <code>/duel</code> to select field and launch.", { parse_mode: 'HTML' });
-  });
-
-  bot.hears('📄 ATS Resume', async (ctx) => {
+  bot.hears('🧠 Recall Quiz', async (ctx) => {
     const userId = ctx.from.id;
-    const prompt = startResume(userId);
-    return replyWithLexicalCheck(ctx, prompt);
+    const session = getSession(userId);
+    const today = getLocalDateString();
+    const todayLogs = session.studyLogs.filter(l => l.date === today);
+
+    const waitMsg = await ctx.reply("🧠 <i>Analyzing today's study topics and generating your active recall quiz... Please wait a few seconds.</i>", { parse_mode: 'HTML' });
+    const username = ctx.from.username || ctx.from.first_name || "friend";
+    const quizResponse = await generateRecallQuiz(todayLogs, username);
+
+    return ctx.telegram.editMessageText(ctx.chat.id, waitMsg.message_id, null, quizResponse, { parse_mode: 'HTML' });
   });
 
-  bot.hears('🚫 Semester Mode ON', async (ctx) => {
+  bot.hears('🤖 AI Tutor', async (ctx) => {
+    return ctx.reply(`👋 <b>Welcome to your Groq AI Tutor!</b>
+
+I am here to act as your personal academic mentor. You can ask me any study-related question, ask me to explain difficult concepts simply, or ask for encouragement when you are feeling tired.
+
+👉 <b>How to ask me:</b>
+Simply type your question directly in the chat! If you aren't in a study logging flow, I will automatically analyze it and give you a helpful, detailed, and encouraging response.
+
+<i>Try it! Send a message like: "Explain Champaran Satyagraha in simple terms" or "I am feeling overwhelmed, what should I do?"</i>`, { parse_mode: 'HTML' });
+  });
+
+  bot.hears('🔔 Reminders', async (ctx) => {
     const userId = ctx.from.id;
-    toggleSemesterMode(userId, true);
-    const card = getStatusCard(userId);
-    return ctx.reply(card, { parse_mode: 'HTML' });
+    const session = getSession(userId);
+
+    const inlineKeyboard = Markup.inlineKeyboard([
+      [Markup.button.callback(session.remindersEnabled ? '🔔 Disable Reminders' : '🔕 Enable Reminders', 'toggle_reminders')]
+    ]);
+
+    return ctx.reply(`🔔 <b>Reminders Configuration</b>
+--------------------------------------------
+Status: <b>${session.remindersEnabled ? 'Enabled' : 'Disabled'}</b>
+
+We will send you friendly support prompts to help keep you consistent! You can toggle them using the button below.`, { parse_mode: 'HTML', ...inlineKeyboard });
   });
 
-  bot.hears('✅ Semester Mode OFF', async (ctx) => {
+  bot.hears('🎓 Semester Mode', async (ctx) => {
     const userId = ctx.from.id;
-    toggleSemesterMode(userId, false);
-    return ctx.reply("✅ <b>Semester Mode Deactivated.</b> Competitive exam tracks and Study Duels restored.", { parse_mode: 'HTML' });
+    const session = getSession(userId);
+    toggleSemesterMode(userId, !session.semesterExamMode);
+    return ctx.reply(getStatusCard(userId), { parse_mode: 'HTML', ...mainMenu });
   });
 
-  // --- CALLBACK QUERY HANDLERS (INLINE BUTTONS) ---
+  // --- CALLBACK QUERY HANDLERS ---
 
   bot.on('callback_query', async (ctx) => {
     const userId = ctx.from.id;
     const data = ctx.callbackQuery.data;
-    const username = ctx.from.username || ctx.from.first_name || "Cadet";
 
-    // Duel arena selection
-    if (data.startsWith('select_duel_')) {
-      const field = data.split('_')[2];
-      const duelState = startDuel(userId, field);
-      const rendered = renderQuestion(duelState);
+    if (data === 'toggle_reminders') {
+      const session = getSession(userId);
+      session.remindersEnabled = !session.remindersEnabled;
+      updateSession(userId, session);
 
-      const q = duelState.questions[0];
-      const inlineButtons = Markup.inlineKeyboard([
-        [Markup.button.callback(`A) ${q.options[0]}`, 'duel_ans_0'), Markup.button.callback(`B) ${q.options[1]}`, 'duel_ans_1')],
-        [Markup.button.callback(`C) ${q.options[2]}`, 'duel_ans_2'), Markup.button.callback(`D) ${q.options[3]}`, 'duel_ans_3')]
+      await ctx.answerCbQuery(session.remindersEnabled ? "Reminders Enabled" : "Reminders Disabled");
+
+      const inlineKeyboard = Markup.inlineKeyboard([
+        [Markup.button.callback(session.remindersEnabled ? '🔔 Disable Reminders' : '🔕 Enable Reminders', 'toggle_reminders')]
       ]);
 
-      await ctx.answerCbQuery("Duel initiated.");
-      return ctx.editMessageText(rendered, { parse_mode: 'HTML', ...inlineButtons });
-    }
+      return ctx.editMessageText(`🔔 <b>Reminders Configuration</b>
+--------------------------------------------
+Status: <b>${session.remindersEnabled ? 'Enabled' : 'Disabled'}</b>
 
-    // Duel answer submitting
-    if (data.startsWith('duel_ans_')) {
-      const optionIndex = parseInt(data.split('_')[2], 10);
-      const duelState = getDuel(userId);
-
-      if (!duelState) {
-        await ctx.answerCbQuery("Error: Duel session not found.");
-        return ctx.reply("No active duel running. Start a new one using /duel.");
-      }
-
-      const result = submitAnswer(userId, optionIndex);
-      await ctx.answerCbQuery(result.isCorrect ? "Correct!" : "Incorrect!");
-
-      let resultHeader = result.isCorrect ? "✅ <b>CORRECT VERIFICATION</b>" : "❌ <b>INCORRECT SUBMISSION</b>";
-      let feedback = `${resultHeader}\n\n• <b>Correct Option:</b> ${escapeHtml(result.correctAnswerText)}\n• <b>Resolution Logic:</b> <i>${escapeHtml(result.explanation)}</i>\n\n`;
-
-      if (duelState.currentIndex + 1 < duelState.questions.length) {
-        const nextBtn = Markup.inlineKeyboard([
-          [Markup.button.callback('➡️ Next Question', 'duel_next')]
-        ]);
-        return ctx.editMessageText(feedback + "<i>Click below to advance to the next combat question.</i>", { parse_mode: 'HTML', ...nextBtn });
-      } else {
-        const finishBtn = Markup.inlineKeyboard([
-          [Markup.button.callback('📊 View Final Scorecard', 'duel_finish')]
-        ]);
-        return ctx.editMessageText(feedback + "<i>All 5 challenges completed.</i>", { parse_mode: 'HTML', ...finishBtn });
-      }
-    }
-
-    // Duel next question advancement
-    if (data === 'duel_next') {
-      const duelState = getDuel(userId);
-      if (!duelState) {
-        await ctx.answerCbQuery("Error: Session invalid.");
-        return ctx.reply("Use /duel to start a new game.");
-      }
-
-      duelState.currentIndex += 1;
-      const rendered = renderQuestion(duelState);
-      const q = duelState.questions[duelState.currentIndex];
-
-      const inlineButtons = Markup.inlineKeyboard([
-        [Markup.button.callback(`A) ${q.options[0]}`, 'duel_ans_0'), Markup.button.callback(`B) ${q.options[1]}`, 'duel_ans_1')],
-        [Markup.button.callback(`C) ${q.options[2]}`, 'duel_ans_2'), Markup.button.callback(`D) ${q.options[3]}`, 'duel_ans_3')]
-      ]);
-
-      await ctx.answerCbQuery();
-      return ctx.editMessageText(rendered, { parse_mode: 'HTML', ...inlineButtons });
-    }
-
-    // Duel finish scorecard render
-    if (data === 'duel_finish') {
-      const scorecard = processScorecard(userId, username);
-      await ctx.answerCbQuery("Scorecard loaded.");
-      return ctx.editMessageText(scorecard, { parse_mode: 'HTML' });
+We will send you friendly support prompts to help keep you consistent! You can toggle them using the button below.`, { parse_mode: 'HTML', ...inlineKeyboard });
     }
   });
 
@@ -308,33 +268,83 @@ Use the clinical menu buttons below to allocate cognitive load, run study duels,
   bot.on('message', async (ctx) => {
     const userId = ctx.from.id;
     const text = ctx.message.text;
+    const session = getSession(userId);
+    const username = ctx.from.username || ctx.from.first_name || "friend";
 
-    // Check if resume architect flow is active
-    const resumeState = getResumeState(userId);
-    if (resumeState) {
-      const result = savePhaseData(userId, text);
-      if (result) {
-        if (result.done) {
-          await ctx.reply("🎉 <b>ATS Resume compilation completed!</b> Here is your Markdown format:", { parse_mode: 'HTML' });
-          await ctx.reply(`<pre><code class="language-markdown">${escapeHtml(result.resumeMarkdown)}</code></pre>`, { parse_mode: 'HTML' });
-          await ctx.reply("Below is your raw LaTeX code. Copy it directly into Overleaf:", { parse_mode: 'HTML' });
-          return ctx.reply(`<pre><code class="language-latex">${escapeHtml(result.resumeLatex)}</code></pre>`, { parse_mode: 'HTML' });
-        } else {
-          return ctx.reply(result.nextPrompt, { parse_mode: 'HTML' });
+    // 1. Log Study Session state machine
+    if (session.loggingState) {
+      if (text === '/cancel') {
+        session.loggingState = null;
+        session.tempLog = null;
+        updateSession(userId, session);
+        return ctx.reply("🚫 <b>Logging process cancelled.</b>", { parse_mode: 'HTML', ...mainMenu });
+      }
+
+      if (session.loggingState === 'AWAITING_SUBJECT') {
+        session.tempLog.subject = text;
+        session.loggingState = 'AWAITING_MINUTES';
+        updateSession(userId, session);
+        return ctx.reply("⏱️ <b>Got it!</b>\n\nHow many minutes did you study this topic? (Please reply with a number, e.g. <i>45, 60, 90</i>)", { parse_mode: 'HTML' });
+      }
+
+      if (session.loggingState === 'AWAITING_MINUTES') {
+        const mins = parseInt(text, 10);
+        if (isNaN(mins) || mins <= 0) {
+          return ctx.reply("⚠️ <b>Oops!</b> Please enter a valid positive number of minutes (e.g. <i>45, 60, 120</i>).", { parse_mode: 'HTML' });
         }
+        session.tempLog.minutes = mins;
+        session.loggingState = 'AWAITING_NOTES';
+        updateSession(userId, session);
+        return ctx.reply("📝 <b>Almost done!</b>\n\nAny quick notes on what you achieved or benchmarks hit? (e.g. <i>Read Laxmikanth Chapter 3, solved 30 Speed Math drills</i>. Or reply 'none' to skip.)", { parse_mode: 'HTML' });
+      }
+
+      if (session.loggingState === 'AWAITING_NOTES') {
+        const notes = text.toLowerCase() === 'none' ? "" : text;
+        const subject = session.tempLog.subject;
+        const minutes = session.tempLog.minutes;
+
+        // Clear logging states
+        session.loggingState = null;
+        session.tempLog = null;
+        updateSession(userId, session);
+
+        // Record session and calculate targets
+        const result = logStudySession(userId, subject, minutes, notes);
+
+        const xpText = `⚡ <b>XP Earned:</b> <code>+${result.xpReward} XP</code>`;
+        let targetAchievedText = "";
+        
+        if (result.totalMinutesToday >= result.targetMinutes) {
+          targetAchievedText = `\n🔥 <b>Target Achieved!</b> You have completed your stage target of <code>${(result.targetMinutes/60).toFixed(1)}h</code> today! Streak updated to <b>${result.session.streak} days</b>. Level upgraded to <b>Lvl ${result.session.level}</b>. Great job! ❤️`;
+        } else {
+          targetAchievedText = `\n⏱️ Total studied today: <code>${(result.totalMinutesToday/60).toFixed(1)}h</code> / <code>${(result.targetMinutes/60).toFixed(1)}h</code> target.`;
+        }
+
+        return ctx.reply(`🎉 <b>Session logged successfully!</b>
+--------------------------------------------
+📚 Subject: <b>${escapeHtml(subject)}</b>
+⏱️ Time: <code>${minutes} minutes</code>
+${notes ? `📝 Notes: <i>${escapeHtml(notes)}</i>\n` : ""}${xpText}
+${targetAchievedText}
+
+Let's keep up this momentum!`, { parse_mode: 'HTML', ...mainMenu });
       }
     }
 
-    // Default chat fallback (performs Lexical scan + Ambiguity checklist)
+    // 2. Default Chat Fallback: Route to Groq AI Tutor
     if (text) {
+      // Background spelling scanner
       const repairs = scanText(text);
-      if (repairs) {
-        return ctx.reply(`<b>ASTRAOS COGNITIVE CORE SCAN</b>\n--------------------------------------------\nAnalysis of text complete.${repairs}`, { parse_mode: 'HTML' });
-      } else {
-        // Clear text, no typos, no active command -> trigger ambiguity elimination checklist
-        const checklist = getAmbiguityChecklist();
-        return ctx.reply(checklist, { parse_mode: 'HTML', ...mainMenu });
-      }
+      
+      const waitMsg = await ctx.reply("🤖 <i>Let me think about that...</i>", { parse_mode: 'HTML' });
+      
+      let systemPrompt = `The student username is ${username}. Give a warm, empathetic, and encouraging response. Explain academic details clearly.`;
+      const response = await askGroq(text, systemPrompt);
+      
+      // Append lexical scan repairs if any
+      const finalMsg = response + repairs;
+
+      return ctx.telegram.editMessageText(ctx.chat.id, waitMsg.message_id, null, finalMsg, { parse_mode: 'HTML' });
     }
   });
 

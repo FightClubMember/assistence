@@ -1,5 +1,5 @@
-// Session & State Manager (Layer C & Academic Bank Isolation Protocol)
-// Provides JSON-file persistence for user academic levels, XP, streak, and semester modes.
+// Session & State Manager (Empathetic Companion)
+// Provides persistence for study logs, levels, streaks, and university isolation status.
 
 import fs from 'fs';
 import path from 'path';
@@ -7,7 +7,6 @@ import { escapeHtml } from './utils.js';
 
 const SESSIONS_FILE = path.resolve('sessions.json');
 
-// Default session state schema
 const DEFAULT_SESSION = {
   xp: 0,
   level: 1,
@@ -15,7 +14,9 @@ const DEFAULT_SESSION = {
   stage: 1,
   semesterExamMode: false,
   lastActivityDate: null,
-  activeStudyBlocks: { morning: false, afternoon: false, evening: false }
+  studyLogs: [], // Array of { date: 'YYYY-MM-DD', subject: string, minutes: number, notes: string }
+  remindersEnabled: true,
+  reminderTime: "09:00"
 };
 
 let db = {};
@@ -38,19 +39,28 @@ function saveDB() {
   }
 }
 
+export function getLocalDateString() {
+  const d = new Date();
+  const tzOffset = d.getTimezoneOffset() * 60000;
+  return new Date(Date.now() - tzOffset).toISOString().slice(0, 10);
+}
+
 export function getSession(userId) {
   if (!db[userId]) {
-    db[userId] = { ...DEFAULT_SESSION, activeStudyBlocks: { ...DEFAULT_SESSION.activeStudyBlocks } };
+    db[userId] = { ...DEFAULT_SESSION, studyLogs: [] };
     saveDB();
   }
+  // Safety migrations for existing session stores
+  if (!db[userId].studyLogs) db[userId].studyLogs = [];
+  if (db[userId].remindersEnabled === undefined) db[userId].remindersEnabled = true;
+  if (!db[userId].reminderTime) db[userId].reminderTime = "09:00";
+  
   return db[userId];
 }
 
 export function updateSession(userId, updates) {
   const session = getSession(userId);
   Object.assign(session, updates);
-  
-  // Recalculate level and rank
   session.level = Math.floor(session.xp / 100) + 1;
   saveDB();
   return session;
@@ -78,38 +88,150 @@ export function toggleSemesterMode(userId, enable) {
   return session;
 }
 
-export function getStatusCard(userId, username = "Cadet") {
+/**
+ * Log a study session into database
+ */
+export function logStudySession(userId, subject, minutes, notes) {
+  const session = getSession(userId);
+  const today = getLocalDateString();
+  
+  const logEntry = {
+    date: today,
+    subject,
+    minutes: parseInt(minutes, 10) || 0,
+    notes: notes || ""
+  };
+  
+  session.studyLogs.push(logEntry);
+  
+  // XP rewards: +10 XP per session logged + additional XP based on minutes
+  const xpReward = 10 + Math.floor(logEntry.minutes / 15);
+  session.xp += xpReward;
+  session.level = Math.floor(session.xp / 100) + 1;
+  
+  // Calculate today's total study minutes
+  const todayLogs = session.studyLogs.filter(l => l.date === today);
+  const totalMinutesToday = todayLogs.reduce((acc, curr) => acc + curr.minutes, 0);
+  
+  // Target minutes per stage: Stage 1 = 3H (180m), Stage 2 = 5.5H (330m), Stage 3 = 7.5H (450m)
+  const targetMinutes = session.stage === 1 ? 180 : session.stage === 2 ? 330 : 450;
+  
+  // Manage streak progress
+  if (session.lastActivityDate !== today) {
+    if (totalMinutesToday >= targetMinutes) {
+      session.streak += 1;
+      session.lastActivityDate = today;
+      session.xp += 20; // +20 XP streak consistency bonus
+      
+      // Auto-stage upgrades
+      if (session.streak >= 21 && session.stage < 3) {
+        session.stage = 3;
+      } else if (session.streak >= 7 && session.stage < 2) {
+        session.stage = 2;
+      }
+    }
+  }
+  
+  saveDB();
+  return { session, xpReward, totalMinutesToday, targetMinutes };
+}
+
+/**
+ * Generates a visual progress bar
+ */
+function makeProgressBar(percent) {
+  const totalBlocks = 10;
+  const filledBlocks = Math.min(totalBlocks, Math.round(percent / 10));
+  const emptyBlocks = totalBlocks - filledBlocks;
+  return "[" + "■".repeat(filledBlocks) + "□".repeat(emptyBlocks) + `] ${Math.round(percent)}%`;
+}
+
+export function getStatusCard(userId, username = "Student") {
   const session = getSession(userId);
   const rank = getRankTier(session.level);
+  const today = getLocalDateString();
   
   if (session.semesterExamMode) {
-    return `<b>ASTRAOS INTERFACE: STATUS REPORT</b>
+    return `🎓 <b>ACADEMIC BANK ISOLATION MODE: ACTIVE</b>
 --------------------------------------------
-👤 <b>USER:</b> @${escapeHtml(username)}
-⚠️ <b>ACADEMIC BANK ISOLATION PROTOCOL: ACTIVE</b>
-🚩 <b>STATUS:</b> competitive training tracks SUSPENDED.
-⚡ <b>ALLOCATED CAPACITY:</b> 100% University Semester Exam Prep.
+👤 <b>Student:</b> @${escapeHtml(username)}
+📚 <b>Focus:</b> 100% University Semester Exam Prep.
+⚡ <b>Competitive track:</b> Temporarily paused.
 
---------------------------------------------
-<i>Competitive tracking is paused. Focus on obtaining maximum GPA. Tell the bot '/semester off' to resume competitive mode.</i>`;
+<i>"I have paused your competitive tracking so you can focus entirely on securing excellent college marks. Good luck with your semester exams! You've got this. Let me know when you finish to resume your normal schedule."</i>
+
+👉 Type <code>/semester off</code> or click the button below when you are ready to resume.`;
   }
 
-  const completedCount = Object.values(session.activeStudyBlocks).filter(Boolean).length;
-  
-  return `<b>ASTRAOS INTERFACE: STATUS REPORT</b>
+  // Today's stats
+  const todayLogs = session.studyLogs.filter(l => l.date === today);
+  const totalMinutesToday = todayLogs.reduce((acc, curr) => acc + curr.minutes, 0);
+  const targetMinutes = session.stage === 1 ? 180 : session.stage === 2 ? 330 : 450;
+  const compliancePercent = Math.min(100, (totalMinutesToday / targetMinutes) * 100);
+  const progressHtml = makeProgressBar(compliancePercent);
+
+  let logsListHtml = "";
+  if (todayLogs.length > 0) {
+    logsListHtml = todayLogs.map((log, idx) => {
+      return `  ${idx + 1}. <b>${escapeHtml(log.subject)}</b>: <code>${log.minutes} mins</code>${log.notes ? ` (<i>${escapeHtml(log.notes)}</i>)` : ""}`;
+    }).join("\n");
+  } else {
+    logsListHtml = "  <i>No study blocks logged yet today. You can start by clicking '⏱️ Log Study Session'!</i>";
+  }
+
+  return `❤️ <b>STUDY DASHBOARD & STATS</b>
 --------------------------------------------
-👤 <b>USER:</b> @${escapeHtml(username)}
-⚔️ <b>RANK:</b> <i>${escapeHtml(rank)}</i>
-📊 <b>LEVEL:</b> <code>${session.level}</code> | <b>XP:</b> <code>${session.xp} XP</code>
-🔥 <b>CONSISTENCY STREAK:</b> <code>${session.streak} Days</code>
-📈 <b>ACTIVE STAGE:</b> <code>Stage ${session.stage}</code>
+👤 <b>Student:</b> @${escapeHtml(username)}
+⚔️ <b>Rank:</b> <i>${escapeHtml(rank)}</i>
+📊 <b>Level:</b> <code>${session.level}</code> | <b>XP:</b> <code>${session.xp} XP</code>
+🔥 <b>Study Streak:</b> <code>${session.streak} Days</code>
+📈 <b>Active Schedule:</b> <code>Stage ${session.stage}</code>
+
+<b>TODAY'S PROGRESS:</b>
+<code>${progressHtml}</code>
+⏱️ Logged Today: <code>${(totalMinutesToday / 60).toFixed(1)}h</code> / <code>${(targetMinutes / 60).toFixed(1)}h</code> target.
+
+<b>TODAY'S LOGS:</b>
+${logsListHtml}
 
 --------------------------------------------
-<b>TODAY'S COMPLIANCE CHECKLIST:</b>
-- [${session.activeStudyBlocks.morning ? 'x' : ' '}] <b>Morning Block</b> (Conceptual GS Video)
-- [${session.activeStudyBlocks.afternoon ? 'x' : ' '}] <b>Afternoon Block</b> (Arithmetic Drill)
-- [${session.activeStudyBlocks.evening ? 'x' : ' '}] <b>Evening Block</b> (Language Remediation)
+<i>Keep going! Consistent micro-habits lead to macro-results. Let's make today count!</i>
+`;
+}
 
-📊 <b>Daily Compliance:</b> <code>${completedCount}/3</code> Blocks Logged.
+/**
+ * Returns a scannable report of study history
+ */
+export function getPerformanceHistory(userId) {
+  const session = getSession(userId);
+  if (session.studyLogs.length === 0) {
+    return `📈 <b>Performance History:</b>
+You haven't logged any study sessions yet! Once you log your studies, I'll compile a historical chart of your hours here.`;
+  }
+
+  // Group by date
+  const grouped = {};
+  session.studyLogs.forEach(log => {
+    grouped[log.date] = (grouped[log.date] || 0) + log.minutes;
+  });
+
+  // Get last 7 entries
+  const dates = Object.keys(grouped).sort().slice(-7);
+  let chartRows = dates.map(d => {
+    const hours = (grouped[d] / 60).toFixed(1);
+    const bars = "■".repeat(Math.min(10, Math.round(grouped[d] / 60)));
+    return `${d} | ${hours}h | ${bars}`;
+  }).join("\n");
+
+  return `📈 <b>YOUR RECENT STUDY HISTORY (Last 7 Days)</b>
+--------------------------------------------
+<pre>
+Date       | Hours| Progress Chart
+--------------------------------------------
+${chartRows}
+</pre>
+
+<b>Total Study Sessions:</b> <code>${session.studyLogs.length}</code>
+<i>Keep building that chart up! Your future self will thank you.</i>
 `;
 }

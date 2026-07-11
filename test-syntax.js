@@ -2,8 +2,10 @@
 
 import { scanText } from './src/lexical.js';
 import { getSyllabusReport } from './src/syllabus.js';
-import { getStatusCard, updateSession, logStudySession, getPerformanceHistory } from './src/session.js';
+import { getStatusCard, updateSession, logStudySession, getPerformanceHistory, getLocalDateString } from './src/session.js';
 import { askGroq, generateRecallQuiz } from './src/groq.js';
+import { downloadVoiceFile, transcribeAudio, evaluateExplanation } from './src/feynman.js';
+import { generateFlashcards, updateCardLeitner, addDays } from './src/flashcard.js';
 import { setupBot } from './bot.js';
 
 console.log("Starting verification...");
@@ -27,7 +29,7 @@ try {
 
   // Test session status card
   const status = getStatusCard("user123", "test_user");
-  if (status.includes("Aspirant Cadet") || status.includes("STUDY DASHBOARD")) {
+  if (status.includes("STUDY DASHBOARD") && status.includes("Pending Cards")) {
     console.log("✅ Session state module: VALID");
   } else {
     throw new Error("Status card invalid");
@@ -41,12 +43,35 @@ try {
     throw new Error("Study session logging failed");
   }
 
-  // Test performance history chart
-  const history = getPerformanceHistory("user123");
-  if (history.includes("Polity Basics") || history.includes("Progress Chart")) {
-    console.log("✅ Performance history chart: VALID");
+  // Test Leitner system card calculations
+  const sampleCard = {
+    id: "fc_test",
+    subject: "History",
+    question: "Who led Champaran?",
+    answer: "Gandhi",
+    box: 1,
+    nextReviewDate: getLocalDateString()
+  };
+  
+  const updatedCardCorrect = updateCardLeitner({ ...sampleCard }, true);
+  if (updatedCardCorrect.box === 2 && updatedCardCorrect.nextReviewDate === addDays(getLocalDateString(), 3)) {
+    console.log("✅ Leitner spaced progression math: VALID");
   } else {
-    throw new Error("Performance history chart invalid");
+    throw new Error("Leitner Box 2 progression failed");
+  }
+
+  const updatedCardIncorrect = updateCardLeitner({ ...sampleCard, box: 3 }, false);
+  if (updatedCardIncorrect.box === 1 && updatedCardIncorrect.nextReviewDate === addDays(getLocalDateString(), 1)) {
+    console.log("✅ Leitner spaced reset math: VALID");
+  } else {
+    throw new Error("Leitner Box reset failed");
+  }
+
+  // Test Feynman module exports
+  if (typeof downloadVoiceFile === 'function' && typeof transcribeAudio === 'function' && typeof evaluateExplanation === 'function') {
+    console.log("✅ Feynman active evaluation engine exports: VALID");
+  } else {
+    throw new Error("Feynman exports invalid");
   }
 
   // Test Groq AI exports

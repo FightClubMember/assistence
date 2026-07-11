@@ -1,5 +1,5 @@
 // Session & State Manager (Empathetic Companion)
-// Provides persistence for study logs, levels, streaks, and university isolation status.
+// Provides persistence for study logs, levels, streaks, flashcards, and university isolation status.
 
 import fs from 'fs';
 import path from 'path';
@@ -15,6 +15,7 @@ const DEFAULT_SESSION = {
   semesterExamMode: false,
   lastActivityDate: null,
   studyLogs: [], // Array of { date: 'YYYY-MM-DD', subject: string, minutes: number, notes: string }
+  flashcards: [], // Array of { id, subject, question, answer, box, nextReviewDate }
   remindersEnabled: true,
   reminderTime: "09:00"
 };
@@ -31,7 +32,7 @@ try {
   console.error("Error reading sessions.json, starting fresh:", err);
 }
 
-function saveDB() {
+export function saveDB() {
   try {
     fs.writeFileSync(SESSIONS_FILE, JSON.stringify(db, null, 2), 'utf8');
   } catch (err) {
@@ -47,11 +48,12 @@ export function getLocalDateString() {
 
 export function getSession(userId) {
   if (!db[userId]) {
-    db[userId] = { ...DEFAULT_SESSION, studyLogs: [] };
+    db[userId] = { ...DEFAULT_SESSION, studyLogs: [], flashcards: [] };
     saveDB();
   }
   // Safety migrations for existing session stores
   if (!db[userId].studyLogs) db[userId].studyLogs = [];
+  if (!db[userId].flashcards) db[userId].flashcards = [];
   if (db[userId].remindersEnabled === undefined) db[userId].remindersEnabled = true;
   if (!db[userId].reminderTime) db[userId].reminderTime = "09:00";
   
@@ -170,13 +172,16 @@ export function getStatusCard(userId, username = "Student") {
   const compliancePercent = Math.min(100, (totalMinutesToday / targetMinutes) * 100);
   const progressHtml = makeProgressBar(compliancePercent);
 
+  // Spaced repetition stats
+  const pendingFlashcardsCount = session.flashcards.filter(c => c.nextReviewDate <= today).length;
+
   let logsListHtml = "";
   if (todayLogs.length > 0) {
     logsListHtml = todayLogs.map((log, idx) => {
       return `  ${idx + 1}. <b>${escapeHtml(log.subject)}</b>: <code>${log.minutes} mins</code>${log.notes ? ` (<i>${escapeHtml(log.notes)}</i>)` : ""}`;
     }).join("\n");
   } else {
-    logsListHtml = "  <i>No study blocks logged yet today. You can start by clicking '⏱️ Log Study Session'!</i>";
+    logsListHtml = "  <i>No study blocks logged yet today. You can start by clicking '⏱️ Log Study'!</i>";
   }
 
   return `❤️ <b>STUDY DASHBOARD & STATS</b>
@@ -186,6 +191,7 @@ export function getStatusCard(userId, username = "Student") {
 📊 <b>Level:</b> <code>${session.level}</code> | <b>XP:</b> <code>${session.xp} XP</code>
 🔥 <b>Study Streak:</b> <code>${session.streak} Days</code>
 📈 <b>Active Schedule:</b> <code>Stage ${session.stage}</code>
+🎴 <b>Pending Cards:</b> <code>${pendingFlashcardsCount} Reviews today</code>
 
 <b>TODAY'S PROGRESS:</b>
 <code>${progressHtml}</code>

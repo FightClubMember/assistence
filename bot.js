@@ -1,10 +1,14 @@
-// AstraOS Core Telegram Bot Logic (Empathetic Companion)
+// AstraOS Core Telegram Bot Logic (Empathetic Study Assistant & Pro Engines)
 
 import { Telegraf, Markup } from 'telegraf';
+import fs from 'fs';
+import path from 'path';
 import { scanText } from './src/lexical.js';
 import { getSyllabusReport } from './src/syllabus.js';
 import { getStatusCard, updateSession, getSession, addXp, toggleSemesterMode, logStudySession, getPerformanceHistory, getLocalDateString } from './src/session.js';
 import { askGroq, generateRecallQuiz } from './src/groq.js';
+import { downloadVoiceFile, transcribeAudio, evaluateExplanation } from './src/feynman.js';
+import { generateFlashcards, updateCardLeitner } from './src/flashcard.js';
 import { escapeHtml } from './src/utils.js';
 
 export function setupBot(token) {
@@ -13,7 +17,7 @@ export function setupBot(token) {
   // Friendly Reply Keyboard
   const mainMenu = Markup.keyboard([
     ['📊 Dashboard', '⏱️ Log Study'],
-    ['📈 History', '🧠 Recall Quiz'],
+    ['🎙️ Feynman Drill', '🎴 Review Cards'],
     ['🤖 AI Tutor', '🔔 Reminders'],
     ['🎓 Semester Mode']
   ]).resize();
@@ -26,6 +30,31 @@ export function setupBot(token) {
     return ctx.reply(finalMsg, { parse_mode: 'HTML', ...extra });
   }
 
+  // Helper to trigger the next pending flashcard review
+  async function sendNextFlashcard(ctx, userId) {
+    const session = getSession(userId);
+    const today = getLocalDateString();
+    const pending = session.flashcards.filter(c => c.nextReviewDate <= today);
+
+    if (pending.length === 0) {
+      addXp(userId, 15); // +15 XP Leitner deck completion bonus
+      return ctx.reply(`🎉 <b>Outstanding!</b> You have completed your review deck for today. Your Leitner study boxes are fully updated! <code>+15 XP</code> consistency reward added.`, { parse_mode: 'HTML', ...mainMenu });
+    }
+
+    const card = pending[0];
+    const cardKeyboard = Markup.inlineKeyboard([
+      [Markup.button.callback('👁️ Reveal Answer', `reveal_card_${card.id}`)]
+    ]);
+
+    return ctx.reply(`🎴 <b>FLASHCARD REVIEW</b>
+--------------------------------------------
+📚 Subject: <b>${escapeHtml(card.subject)}</b>
+📦 Leitner Box: <code>${card.box} / 5</code>
+
+❓ <b>Question:</b>
+${escapeHtml(card.question)}`, { parse_mode: 'HTML', ...cardKeyboard });
+  }
+
   // --- COMMAND HANDLERS ---
 
   bot.start(async (ctx) => {
@@ -35,15 +64,15 @@ export function setupBot(token) {
     // Initialize session
     getSession(userId);
 
-    const welcomeText = `👋 <b>Hello, @${escapeHtml(username)}! Welome to your Study Companion!</b>
+    const welcomeText = `👋 <b>Hello, @${escapeHtml(username)}! Welcome to your Study Companion!</b>
 --------------------------------------------
 I am here to help you stay on track, support your learning, and make your study journey less lonely. 
 
-Here is what we can do together:
+Here are the extraordinary features we can use together:
 • 📊 Check your <b>Dashboard</b> for streaks and daily goals.
 • ⏱️ Click <b>Log Study</b> after a study session to record your hours.
-• 📈 View your study charts in <b>History</b>.
-• 🧠 Generate a personalized <b>Recall Quiz</b> based on what you studied today.
+• 🎙️ Click <b>Feynman Drill</b> to record a voice note teaching a concept and get detailed evaluations on your speech & syllabus gaps.
+• 🎴 Click <b>Review Cards</b> to practice spaced-repetition flashcards generated automatically from your study notes.
 • 🤖 Chat with your friendly <b>AI Tutor</b> for explanations or motivational support.
 
 Let's do this together, one day at a time! ❤️`;
@@ -80,6 +109,28 @@ Let's do this together, one day at a time! ❤️`;
     updateSession(userId, session);
 
     return ctx.reply("⏱️ <b>Let's log your study session!</b>\n\nWhat subject or topic did you focus on? (e.g. <i>Indian Polity, Speed Math, Geography NCERT</i>)", { parse_mode: 'HTML', reply_markup: { remove_keyboard: true } });
+  });
+
+  bot.command('feynman', async (ctx) => {
+    const userId = ctx.from.id;
+    const session = getSession(userId);
+
+    session.feynmanState = 'AWAITING_TOPIC';
+    session.feynmanTopic = null;
+    updateSession(userId, session);
+
+    return ctx.reply(`🎙️ <b>Feynman Voice Coach: Step 1</b>
+--------------------------------------------
+Teaching a concept in simple terms (as if explaining to a 10-year-old child) is the single most powerful way to identify what you actually understand.
+
+What topic or syllabus concept would you like to teach me today? (e.g. <i>Champaran Satyagraha, Inflation, Fundamental Rights</i>)
+
+👉 <i>Type /cancel to abort.</i>`, { parse_mode: 'HTML', reply_markup: { remove_keyboard: true } });
+  });
+
+  bot.command('review', async (ctx) => {
+    const userId = ctx.from.id;
+    return sendNextFlashcard(ctx, userId);
   });
 
   bot.command('ask', async (ctx) => {
@@ -133,14 +184,19 @@ Let's do this together, one day at a time! ❤️`;
     if (session.loggingState) {
       session.loggingState = null;
       session.tempLog = null;
-      updateSession(userId, session);
+      cancelled = true;
+    }
+    if (session.feynmanState) {
+      session.feynmanState = null;
+      session.feynmanTopic = null;
       cancelled = true;
     }
 
     if (cancelled) {
-      return ctx.reply("🚫 <b>Logging process cancelled.</b> I've brought you back to the main menu.", { parse_mode: 'HTML', ...mainMenu });
+      updateSession(userId, session);
+      return ctx.reply("🚫 <b>Operation cancelled.</b> I've brought you back to the main menu.", { parse_mode: 'HTML', ...mainMenu });
     } else {
-      return ctx.reply("No active logging flow is running. You are in the main menu!", { parse_mode: 'HTML', ...mainMenu });
+      return ctx.reply("No active workflow is running. You are in the main menu!", { parse_mode: 'HTML', ...mainMenu });
     }
   });
 
@@ -181,28 +237,31 @@ We will send you friendly support prompts to help keep you consistent!`, { parse
     return ctx.reply("⏱️ <b>Let's log your study session!</b>\n\nWhat subject or topic did you focus on? (e.g. <i>Indian Polity, Speed Math, Geography NCERT</i>)\n\n👉 <i>Type /cancel to abort at any time.</i>", { parse_mode: 'HTML', reply_markup: { remove_keyboard: true } });
   });
 
+  bot.hears('🎙️ Feynman Drill', async (ctx) => {
+    const userId = ctx.from.id;
+    const session = getSession(userId);
+
+    session.feynmanState = 'AWAITING_TOPIC';
+    session.feynmanTopic = null;
+    updateSession(userId, session);
+
+    return ctx.reply(`🎙️ <b>Feynman Voice Coach: Step 1</b>
+--------------------------------------------
+Teaching a concept in simple terms (as if explaining to a 10-year-old child) is the single most powerful way to identify what you actually understand.
+
+What topic or syllabus concept would you like to teach me today? (e.g. <i>Champaran Satyagraha, Inflation, Fundamental Rights</i>)
+
+👉 <i>Type /cancel to abort.</i>`, { parse_mode: 'HTML', reply_markup: { remove_keyboard: true } });
+  });
+
+  bot.hears('🎴 Review Cards', async (ctx) => {
+    const userId = ctx.from.id;
+    return sendNextFlashcard(ctx, userId);
+  });
+
   bot.hears('📈 History', async (ctx) => {
     const userId = ctx.from.id;
     return replyWithLexicalCheck(ctx, getPerformanceHistory(userId));
-  });
-
-  bot.hears('📚 Study Syllabus', async (ctx) => {
-    const userId = ctx.from.id;
-    const session = getSession(userId);
-    return replyWithLexicalCheck(ctx, getSyllabusReport(session.stage, session.streak));
-  });
-
-  bot.hears('🧠 Recall Quiz', async (ctx) => {
-    const userId = ctx.from.id;
-    const session = getSession(userId);
-    const today = getLocalDateString();
-    const todayLogs = session.studyLogs.filter(l => l.date === today);
-
-    const waitMsg = await ctx.reply("🧠 <i>Analyzing today's study topics and generating your active recall quiz... Please wait a few seconds.</i>", { parse_mode: 'HTML' });
-    const username = ctx.from.username || ctx.from.first_name || "friend";
-    const quizResponse = await generateRecallQuiz(todayLogs, username);
-
-    return ctx.telegram.editMessageText(ctx.chat.id, waitMsg.message_id, null, quizResponse, { parse_mode: 'HTML' });
   });
 
   bot.hears('🤖 AI Tutor', async (ctx) => {
@@ -211,7 +270,7 @@ We will send you friendly support prompts to help keep you consistent!`, { parse
 I am here to act as your personal academic mentor. You can ask me any study-related question, ask me to explain difficult concepts simply, or ask for encouragement when you are feeling tired.
 
 👉 <b>How to ask me:</b>
-Simply type your question directly in the chat! If you aren't in a study logging flow, I will automatically analyze it and give you a helpful, detailed, and encouraging response.
+Simply type your question directly in the chat! If you aren't in a study logging or Feynman flow, I will automatically analyze it and give you a helpful, detailed, and encouraging response.
 
 <i>Try it! Send a message like: "Explain Champaran Satyagraha in simple terms" or "I am feeling overwhelmed, what should I do?"</i>`, { parse_mode: 'HTML' });
   });
@@ -244,6 +303,7 @@ We will send you friendly support prompts to help keep you consistent! You can t
     const userId = ctx.from.id;
     const data = ctx.callbackQuery.data;
 
+    // Toggle Reminders
     if (data === 'toggle_reminders') {
       const session = getSession(userId);
       session.remindersEnabled = !session.remindersEnabled;
@@ -261,6 +321,70 @@ Status: <b>${session.remindersEnabled ? 'Enabled' : 'Disabled'}</b>
 
 We will send you friendly support prompts to help keep you consistent! You can toggle them using the button below.`, { parse_mode: 'HTML', ...inlineKeyboard });
     }
+
+    // Reveal Flashcard Answer
+    if (data.startsWith('reveal_card_')) {
+      const cardId = data.replace('reveal_card_', '');
+      const session = getSession(userId);
+      const card = session.flashcards.find(c => c.id === cardId);
+
+      if (!card) {
+        await ctx.answerCbQuery("Flashcard not found.");
+        return ctx.reply("Error: Card session expired or invalid.");
+      }
+
+      await ctx.answerCbQuery();
+      
+      const ratingKeyboard = Markup.inlineKeyboard([
+        [
+          Markup.button.callback('✅ Yes, got it!', `evaluate_card_${card.id}_yes`),
+          Markup.button.callback('❌ No, forgot!', `evaluate_card_${card.id}_no`)
+        ]
+      ]);
+
+      return ctx.editMessageText(`🎴 <b>FLASHCARD EVALUATION</b>
+--------------------------------------------
+📚 Subject: <b>${escapeHtml(card.subject)}</b>
+📦 Leitner Box: <code>${card.box} / 5</code>
+
+❓ <b>Question:</b>
+${escapeHtml(card.question)}
+
+💡 <b>Answer:</b>
+<i>${escapeHtml(card.answer)}</i>
+
+--------------------------------------------
+<b>Did you recall this correctly?</b>`, { parse_mode: 'HTML', ...ratingKeyboard });
+    }
+
+    // Leitner Card evaluation (Yes/No response)
+    if (data.startsWith('evaluate_card_')) {
+      const parts = data.replace('evaluate_card_', '').split('_');
+      const cardId = `fc_${parts[0]}_${parts[1]}_${parts[2]}`;
+      const yesNo = parts[3]; // 'yes' or 'no'
+
+      const session = getSession(userId);
+      const cardIndex = session.flashcards.findIndex(c => c.id === cardId);
+
+      if (cardIndex === -1) {
+        await ctx.answerCbQuery("Flashcard not found.");
+        return ctx.reply("Error updating flashcard Leitner rating.");
+      }
+
+      const card = session.flashcards[cardIndex];
+      updateCardLeitner(card, yesNo === 'yes');
+      updateSession(userId, session);
+
+      await ctx.answerCbQuery(yesNo === 'yes' ? "Saved: Box Upgraded!" : "Saved: Reset to Box 1");
+      
+      // Notify result of this card
+      await ctx.reply(yesNo === 'yes' 
+        ? `✅ <b>Well done!</b> Card moved to Box <code>${card.box}</code>. Spaced interval extended.`
+        : `❌ <b>No worries!</b> Card reset to Box 1. We will review it again tomorrow.`, { parse_mode: 'HTML' });
+
+      // Automatically push next card
+      return sendNextFlashcard(ctx, userId);
+    }
   });
 
   // --- GENERAL MESSAGE TEXT / FLOW CAPTURE ---
@@ -271,7 +395,72 @@ We will send you friendly support prompts to help keep you consistent! You can t
     const session = getSession(userId);
     const username = ctx.from.username || ctx.from.first_name || "friend";
 
-    // 1. Log Study Session state machine
+    // A. Handle voice notes (Feynman Drill step 2)
+    if (ctx.message.voice || ctx.message.audio) {
+      if (session.feynmanState !== 'AWAITING_VOICE') {
+        return ctx.reply("🎙️ If you want to run a Feynman active teaching drill, click the <b>🎙️ Feynman Drill</b> button first so I know what topic you are teaching!", { parse_mode: 'HTML' });
+      }
+
+      const voice = ctx.message.voice || ctx.message.audio;
+      const fileId = voice.file_id;
+
+      const waitMsg = await ctx.reply("📥 <i>Downloading your voice note from Telegram...</i>", { parse_mode: 'HTML' });
+
+      try {
+        const file = await ctx.telegram.getFile(fileId);
+        const tempFileName = `temp_voice_${userId}_${Date.now()}.ogg`;
+        const tempFilePath = path.resolve(tempFileName);
+
+        await downloadVoiceFile(token, file.file_path, tempFilePath);
+
+        await ctx.telegram.editMessageText(ctx.chat.id, waitMsg.message_id, null, "🧠 <i>Transcribing your audio using Groq Whisper-v3 engine...</i>", { parse_mode: 'HTML' });
+        const transcription = await transcribeAudio(tempFilePath);
+
+        if (!transcription || transcription.trim().length === 0) {
+          fs.unlinkSync(tempFilePath);
+          session.feynmanState = null;
+          session.feynmanTopic = null;
+          updateSession(userId, session);
+          return ctx.telegram.editMessageText(ctx.chat.id, waitMsg.message_id, null, "❌ <b>Transcription failed:</b> I couldn't pick up any speech in that recording. Make sure your microphone is clear, and try again!", { parse_mode: 'HTML' });
+        }
+
+        await ctx.telegram.editMessageText(ctx.chat.id, waitMsg.message_id, null, `📊 <i>Evaluating explanation metrics for topic: "${escapeHtml(session.feynmanTopic)}"...</i>`, { parse_mode: 'HTML' });
+        const evaluation = await evaluateExplanation(session.feynmanTopic, transcription);
+
+        // Delete temporary ogg file
+        fs.unlinkSync(tempFilePath);
+
+        // Clear states and allocate XP
+        const topic = session.feynmanTopic;
+        session.feynmanState = null;
+        session.feynmanTopic = null;
+        session.xp += 30; // +30 XP Feynman drill reward
+        updateSession(userId, session);
+
+        await ctx.telegram.deleteMessage(ctx.chat.id, waitMsg.message_id).catch(() => {});
+
+        const finalReport = `🎙️ <b>FEYNMAN DRILL SCORECARD</b>
+--------------------------------------------
+👤 <b>Student:</b> @${escapeHtml(username)}
+📚 <b>Topic:</b> <i>${escapeHtml(topic)}</i>
+💬 <b>Your Transcript:</b> 
+"<i>${escapeHtml(transcription)}</i>"
+
+--------------------------------------------
+${evaluation}
+
+--------------------------------------------
+⚡ <b>Drill Reward:</b> <code>+30 XP</code> completed Feynman drills. Let's keep teaching!`;
+
+        return ctx.reply(finalReport, { parse_mode: 'HTML', ...mainMenu });
+
+      } catch (err) {
+        console.error("Feynman voice processing error:", err);
+        return ctx.reply("❌ <b>Voice Processing Error:</b> Something went wrong while downloading or transcribing your voice note. Check your environment variables and network state.", { parse_mode: 'HTML', ...mainMenu });
+      }
+    }
+
+    // B. Log Study Session state machine
     if (session.loggingState) {
       if (text === '/cancel') {
         session.loggingState = null;
@@ -320,7 +509,7 @@ We will send you friendly support prompts to help keep you consistent! You can t
           targetAchievedText = `\n⏱️ Total studied today: <code>${(result.totalMinutesToday/60).toFixed(1)}h</code> / <code>${(result.targetMinutes/60).toFixed(1)}h</code> target.`;
         }
 
-        return ctx.reply(`🎉 <b>Session logged successfully!</b>
+        ctx.reply(`🎉 <b>Session logged successfully!</b>
 --------------------------------------------
 📚 Subject: <b>${escapeHtml(subject)}</b>
 ⏱️ Time: <code>${minutes} minutes</code>
@@ -328,10 +517,52 @@ ${notes ? `📝 Notes: <i>${escapeHtml(notes)}</i>\n` : ""}${xpText}
 ${targetAchievedText}
 
 Let's keep up this momentum!`, { parse_mode: 'HTML', ...mainMenu });
+
+        // Trigger background Spaced-Repetition flashcard generation
+        ctx.reply("✨ <i>Generating spaced-repetition flashcards in the background...</i>", { parse_mode: 'HTML' })
+          .then(async (statusMsg) => {
+            try {
+              const cards = await generateFlashcards(subject, notes || "General concepts");
+              if (cards && cards.length > 0) {
+                const latestSession = getSession(userId);
+                latestSession.flashcards.push(...cards);
+                updateSession(userId, latestSession);
+
+                await ctx.telegram.editMessageText(ctx.chat.id, statusMsg.message_id, null, `🎴 <b>Leitner System:</b> Generated <b>3 custom flashcards</b> from your session on <b>${escapeHtml(subject)}</b>. They are queued in your review deck!`, { parse_mode: 'HTML' });
+              } else {
+                await ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
+              }
+            } catch (err) {
+              console.error("Error creating cards:", err);
+              await ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
+            }
+          });
+
+        return;
       }
     }
 
-    // 2. Default Chat Fallback: Route to Groq AI Tutor
+    // C. Feynman Drill step 1 text capture
+    if (session.feynmanState === 'AWAITING_TOPIC') {
+      if (text === '/cancel') {
+        session.feynmanState = null;
+        session.feynmanTopic = null;
+        updateSession(userId, session);
+        return ctx.reply("🚫 <b>Drill cancelled.</b>", { parse_mode: 'HTML', ...mainMenu });
+      }
+
+      session.feynmanTopic = text;
+      session.feynmanState = 'AWAITING_VOICE';
+      updateSession(userId, session);
+
+      return ctx.reply(`Great! Subject topic is set to: <b>${escapeHtml(text)}</b>
+
+👉 <b>Step 2:</b> Now, press the record button and explain this topic to me in your own words. Speak for 30 seconds up to 2 minutes. Explain it as if I'm a total beginner!
+
+<i>Once sent, I will transcribe and critique your explanation, pinpointing facts you got right and key syllabus details you forgot.</i>`, { parse_mode: 'HTML' });
+    }
+
+    // D. Default Chat Fallback: Route to Groq AI Tutor
     if (text) {
       // Background spelling scanner
       const repairs = scanText(text);
